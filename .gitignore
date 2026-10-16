@@ -1,0 +1,18 @@
+# Temporäre und erzeugte Dateien
+*.json
+*.log
+~$*
+*.tmp
+__pycache__/
+*.pyc
+
+# Build-Ergebnisse (EXEs gehören in den GitHub-Release)
+build/
+dist/
+*.spec
+*.exe
+
+# Echte Daten niemals einchecken
+LBV_Mehrarbeit_*.pdf
+Mehrarbeit_ALLE_*.pdf
+Vorlage_LBV_Mehrarbeit.pdf
