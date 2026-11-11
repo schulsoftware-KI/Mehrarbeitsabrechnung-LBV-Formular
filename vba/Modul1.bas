@@ -821,8 +821,12 @@ End Sub
 '  MAKRO 6: Buttons auf Informationen, Pseudonyme und Uebersicht
 '  Einmalig ausfuehren - loescht vorhandene Makro-Buttons und
 '  erstellt alle neu.
+'  Tabelle Informationen: nur "Buttons erstellen", oben in Spalte SPALTE_INFO.
 ' ================================================================
 Sub ButtonsErstellen()
+
+    ' Spalte, in der der Button auf Tabelle Informationen beginnt
+    Const SPALTE_INFO As String = "D"
 
     ' Buttons werden als Shapes (abgerundete Rechtecke) angelegt,
     ' damit sie auf allen Excel-Versionen zuverlaessig funktionieren.
@@ -872,9 +876,8 @@ NaechstesBlatt:
     Dim btnDefs(24) As String   ' max 25 Buttons
     Dim btnCount As Integer: btnCount = 0
 
-    ' Tabelle Informationen (blau)
-    btnDefs(btnCount) = "Informationen|Tabelle1 importieren|Tabelle1Importieren":                                     btnCount = btnCount + 1
-    btnDefs(btnCount) = "Informationen|Summen einlesen|SummenInTabelleUebersicht":                                    btnCount = btnCount + 1
+    ' Tabelle Informationen (blau) - nur "Buttons erstellen"
+    ' (Tabelle1 importieren / Summen einlesen gibt es auf der Uebersicht)
     btnDefs(btnCount) = "Informationen|Buttons erstellen|ButtonsErstellen":                                           btnCount = btnCount + 1
 
     ' Tabelle Pseudonyme (gruen)
@@ -894,6 +897,10 @@ NaechstesBlatt:
     btnDefs(btnCount) = Chr(220) & "bersicht|PDFs erstellen|PDFErstellen":                                            btnCount = btnCount + 1
     btnDefs(btnCount) = Chr(220) & "bersicht|PDFs drucken|PDFsDrucken":                                               btnCount = btnCount + 1
     btnDefs(btnCount) = Chr(220) & "bersicht|LBV-Formular erstellen|LBVFormularErstellen":                             btnCount = btnCount + 1
+    ' LBV zusammenfassen (Modul2) - bisher von Hand angelegt, jetzt fest dabei
+    btnDefs(btnCount) = Chr(220) & "bersicht|Merge LBV|LBVZusammenfassen":                                             btnCount = btnCount + 1
+    ' LBV-Sammeldatei (Modul2): Einzel- ODER Gesamtformulare aller Lehrer in eine PDF
+    btnDefs(btnCount) = Chr(220) & "bersicht|LBV-Sammeldatei|LBVSammeldateiErstellen":                                 btnCount = btnCount + 1
 
     ' ------------------------------------------------------------
     '  Buttons platzieren
@@ -928,8 +935,13 @@ NaechstesBlatt:
         If wsZiel Is Nothing Then GoTo NaechsterButton
 
         ' X-Position zuruecksetzen wenn neues Blatt
+        ' (Informationen: linke Kante von Spalte SPALTE_INFO, sonst ab Spalte A)
         If zielBlatt <> letztesSHeet Then
-            btnLeft = 4
+            If zielBlatt = "Informationen" Then
+                btnLeft = wsZiel.Columns(SPALTE_INFO).Left + 4
+            Else
+                btnLeft = 4
+            End If
             letztesSHeet = zielBlatt
         End If
 
@@ -1662,8 +1674,128 @@ End Function
 
 ' ================================================================
 '  MAKRO 7: Alle PDFs in einem Ordner drucken (via ShellExecute)
+'  Drucker: Zeile "Druckeradresse" in Tabelle Informationen (Spalte B).
+'  Erlaubt sind Druckername, Netzwerkpfad (\\server\drucker) oder
+'  IP-Adresse eines auf diesem PC installierten Druckers.
+'  Leer oder Zeile fehlt: Windows-Standarddrucker (wie bisher).
+'  Druckprogramm: Zeile "Druckprogramm" in Tabelle Informationen:
+'    leer / automatisch     -> SumatraPDF, falls gefunden, sonst Standard-PDF-Programm
+'    SumatraPDF             -> immer SumatraPDF
+'    Acrobat                -> Adobe Acrobat (Reader) direkt, egal welches
+'                              Programm in Windows Standard ist (auch "Adobe")
+'    C:\...\SumatraPDF.exe  -> diese SumatraPDF- bzw. Acrobat-Datei
+'    Standard-PDF-Programm  -> immer das Standard-PDF-Programm von Windows
 ' ================================================================
 Sub PDFsDrucken()
+
+    ' Drucker aus Tabelle Informationen ermitteln
+    Dim druckerEingabe As String: druckerEingabe = DruckerAusInformationen()
+    Dim druckerName As String: druckerName = ""
+    If druckerEingabe <> "" Then
+        Dim druckerListe As String: druckerListe = ""
+        druckerName = DruckerAufloesen(druckerEingabe, druckerListe)
+        If druckerName = "" Then
+            If MsgBox("Der Drucker aus Tabelle Informationen wurde auf diesem PC nicht gefunden:" & Chr(10) & _
+                      "  " & druckerEingabe & Chr(10) & Chr(10) & _
+                      "Installierte Drucker:" & Chr(10) & druckerListe & Chr(10) & _
+                      "Stattdessen den Standarddrucker verwenden?", _
+                      vbYesNo + vbExclamation, "Drucker nicht gefunden") = vbNo Then Exit Sub
+        End If
+    End If
+    Dim druckerText As String
+    druckerText = IIf(druckerName = "", "Standarddrucker", druckerName)
+
+    ' Druckweg laut Zeile "Druckprogramm" in Tabelle Informationen.
+    ' SumatraPDF druckt ohne Fenster direkt auf den gewuenschten Drucker,
+    ' unabhaengig vom Standard-PDF-Programm (Edge kann nicht per Makro drucken).
+    ' Standard-PDF-Programm: per ShellExecute, z.B. Adobe Acrobat (Reader).
+    Dim druckProgramm As String: druckProgramm = InfoWertLesen("druckprogramm")
+    Dim dpKurz As String
+    dpKurz = LCase(Replace(Replace(Replace(druckProgramm, " ", ""), "-", ""), "_", ""))
+    Dim sumatraPfad As String: sumatraPfad = ""
+    Dim acrobatPfad As String: acrobatPfad = ""
+    Dim dpTreffer As String
+    Select Case True
+        Case dpKurz = "" Or dpKurz = "automatisch" Or dpKurz = "auto"
+            sumatraPfad = SumatraSuchen()
+
+        Case dpKurz = "sumatra" Or dpKurz = "sumatrapdf"
+            sumatraPfad = SumatraSuchen()
+            If sumatraPfad = "" Then
+                If MsgBox("In Tabelle Informationen ist als Druckprogramm SumatraPDF eingestellt," & Chr(10) & _
+                          "es wurde aber keine SumatraPDF-Datei gefunden (gesucht u.a. im Ordner von lbv_fill.exe)." & Chr(10) & Chr(10) & _
+                          "Stattdessen das Standard-PDF-Programm verwenden?", _
+                          vbYesNo + vbExclamation, "PDFs drucken") = vbNo Then Exit Sub
+            End If
+
+        Case Right(dpKurz, 4) = ".exe"
+            ' Pfad zu SumatraPDF oder Acrobat angegeben
+            dpTreffer = ""
+            On Error Resume Next
+            dpTreffer = Dir(Trim(druckProgramm))
+            On Error GoTo 0
+            If dpTreffer = "" Then
+                MsgBox "Das Druckprogramm aus Tabelle Informationen wurde nicht gefunden:" & Chr(10) & _
+                       Trim(druckProgramm), vbExclamation, "PDFs drucken"
+                Exit Sub
+            End If
+            If InStr(LCase(dpTreffer), "sumatra") > 0 Then
+                sumatraPfad = Trim(druckProgramm)
+            ElseIf InStr(LCase(dpTreffer), "acro") > 0 Then
+                acrobatPfad = Trim(druckProgramm)
+            Else
+                MsgBox "Als Pfad bei 'Druckprogramm' werden nur SumatraPDF und" & Chr(10) & _
+                       "Adobe Acrobat (Acrobat.exe / AcroRd32.exe) unterst" & Chr(252) & "tzt.", vbExclamation, "PDFs drucken"
+                Exit Sub
+            End If
+
+        Case InStr(dpKurz, "acrobat") > 0 Or InStr(dpKurz, "adobe") > 0
+            ' Acrobat bzw. Acrobat Reader DIREKT aufrufen - egal, welches Programm
+            ' in Windows als Standard-PDF-Programm eingestellt ist
+            acrobatPfad = AcrobatSuchen()
+            If acrobatPfad = "" Then
+                If MsgBox("In Tabelle Informationen ist als Druckprogramm Acrobat eingestellt," & Chr(10) & _
+                          "Adobe Acrobat bzw. Acrobat Reader wurde auf diesem PC aber nicht gefunden." & Chr(10) & Chr(10) & _
+                          "Stattdessen automatisch w" & Chr(228) & "hlen (SumatraPDF, sonst Standard-PDF-Programm)?", _
+                          vbYesNo + vbExclamation, "PDFs drucken") = vbNo Then Exit Sub
+                sumatraPfad = SumatraSuchen()
+            End If
+
+        Case dpKurz Like "standard*"
+            sumatraPfad = ""            ' bewusst das Standard-PDF-Programm von Windows
+
+        Case Else
+            MsgBox "Unbekannter Eintrag bei 'Druckprogramm' in Tabelle Informationen:" & Chr(10) & _
+                   "  " & druckProgramm & Chr(10) & Chr(10) & _
+                   "Erlaubt sind:" & Chr(10) & _
+                   "  (leer) oder automatisch" & Chr(10) & _
+                   "  SumatraPDF" & Chr(10) & _
+                   "  Acrobat" & Chr(10) & _
+                   "  Standard-PDF-Programm" & Chr(10) & _
+                   "  Pfad zur Programmdatei (C:\...\SumatraPDF.exe oder Acrobat.exe)", vbExclamation, "PDFs drucken"
+            Exit Sub
+    End Select
+    Dim druckWegText As String
+    If sumatraPfad <> "" Then
+        druckWegText = "SumatraPDF" & Chr(10) & "  (" & sumatraPfad & ")"
+    ElseIf acrobatPfad <> "" Then
+        druckWegText = "Adobe Acrobat" & Chr(10) & "  (" & acrobatPfad & ")"
+    Else
+        druckWegText = "Standard-PDF-Programm"
+    End If
+
+    ' Acrobat braucht beim Drucken ohne Dialog (/t) immer einen Druckernamen
+    Dim acroDrucker As String: acroDrucker = ""
+    If acrobatPfad <> "" Then
+        acroDrucker = IIf(druckerName <> "", druckerName, StandardDrucker())
+        If acroDrucker = "" Then
+            MsgBox "Der Windows-Standarddrucker konnte nicht ermittelt werden." & Chr(10) & _
+                   "Bitte in Tabelle Informationen bei 'Druckeradresse' den Drucker eintragen.", _
+                   vbExclamation, "PDFs drucken"
+            Exit Sub
+        End If
+        druckerText = acroDrucker
+    End If
 
     ' Ordner mit PDFs waehlen
     Dim druckOrdner As String
@@ -1705,27 +1837,121 @@ Sub PDFsDrucken()
         liste = liste & "  " & pdfDateien(i) & Chr(10)
     Next i
     If anzahl > 10 Then liste = liste & "  ... und " & (anzahl - 10) & " weitere" & Chr(10)
-    liste = liste & Chr(10) & "Standarddrucker wird verwendet." & Chr(10) & Chr(10) & "Fortfahren?"
+    liste = liste & Chr(10) & "Drucker: " & druckerText & Chr(10) & _
+            "Druck " & Chr(252) & "ber: " & druckWegText & Chr(10) & Chr(10) & "Fortfahren?"
 
     If MsgBox(liste, vbYesNo + vbQuestion, "PDFs drucken") = vbNo Then Exit Sub
 
-    ' PDFs an Standarddrucker senden
+    ' PDFs an den Drucker senden
     Dim gedruckt As Integer: gedruckt = 0
     Dim fehler As String:    fehler = ""
+    ' Kennt das PDF-Programm "printto" nicht, wird der Windows-Standarddrucker
+    ' voruebergehend auf den Zieldrucker umgestellt und am Ende zurueckgesetzt.
+    Dim nurPrint As Boolean: nurPrint = (druckerName = "")
+    Dim umgestellt As Boolean: umgestellt = False
+    Dim alterStandard As String: alterStandard = ""
 
+    Dim wsh As Object
+    If sumatraPfad <> "" Or acrobatPfad <> "" Then Set wsh = CreateObject("WScript.Shell")
+
+    On Error GoTo DruckFehler
     For i = 0 To anzahl - 1
         Dim vollPfad As String
         vollPfad = druckOrdner & pdfDateien(i)
 
-        ' ShellExecute mit "print" schickt die Datei an den Standarddrucker
+        If sumatraPfad <> "" Then
+            ' --- Weg 1: SumatraPDF (wartet, bis der Auftrag uebergeben ist) ---
+            ' "shrink": nur verkleinern, falls der Drucker nicht randlos drucken kann
+            '           (der LBV-Barcode liegt sehr nah am linken Rand)
+            Dim sumCmd As String, sumExit As Long, sumLog As String, sumMeldung As String
+            sumLog = Environ("TEMP") & "\lbv_druck_log.txt"
+            On Error Resume Next
+            Kill sumLog
+            On Error GoTo DruckFehler
+            sumCmd = Chr(34) & sumatraPfad & Chr(34) & " -silent " & _
+                     IIf(druckerName = "", "-print-to-default", "-print-to " & Chr(34) & druckerName & Chr(34)) & _
+                     " -print-settings " & Chr(34) & "shrink" & Chr(34) & " " & Chr(34) & vollPfad & Chr(34)
+            ' Start ueber cmd (wie bei lbv_fill.exe): kein Windows-Startdialog fuer
+            ' heruntergeladene Programme, und Fehlermeldungen von Windows landen im Log.
+            ' Aeussere Anfuehrungszeichen: cmd /c entfernt das erste und letzte.
+            sumExit = wsh.Run("cmd /c " & Chr(34) & sumCmd & " > " & Chr(34) & sumLog & Chr(34) & " 2>&1" & Chr(34), 0, True)
+            If sumExit = 0 Then
+                gedruckt = gedruckt + 1
+            Else
+                ' SumatraPDF schreibt mit -silent nichts. Steht etwas im Log, kam die
+                ' Meldung von Windows: Programm startet gar nicht -> abbrechen.
+                sumMeldung = TextDateiLesen(sumLog, 8)
+                If sumMeldung <> "" Then
+                    MsgBox "SumatraPDF konnte nicht gestartet werden (Code " & sumExit & "):" & Chr(10) & _
+                           sumatraPfad & Chr(10) & Chr(10) & _
+                           "Meldung von Windows:" & Chr(10) & sumMeldung & Chr(10) & _
+                           "Tipp: Datei einmal per Doppelklick starten. Bei 'Computer wurde gesch" & Chr(252) & "tzt'" & Chr(10) & _
+                           "bzw. Sicherheitswarnung: 'Weitere Informationen' > 'Trotzdem ausf" & Chr(252) & "hren'." & Chr(10) & _
+                           "Oder: Rechtsklick > Eigenschaften > unten 'Zulassen' anhaken > OK.", _
+                           vbExclamation, "PDFs drucken"
+                    Exit Sub
+                End If
+                fehler = fehler & pdfDateien(i) & " (SumatraPDF-Fehlercode: " & sumExit & ")" & Chr(10)
+            End If
+            GoTo NaechstesPDF
+        End If
+
+        If acrobatPfad <> "" Then
+            ' --- Weg 2: Adobe Acrobat (Reader) direkt ---
+            ' /t = ohne Dialog auf den angegebenen Drucker, /s = ohne Startbild,
+            ' /o = ohne Oeffnen-Dialog, /h = minimiert.
+            ' Acrobat bleibt danach geoeffnet und druckt im Hintergrund -> nicht auf
+            ' das Programmende warten (sonst haengt Excel), sondern kurz pausieren.
+            Dim acroCmd As String
+            acroCmd = Chr(34) & acrobatPfad & Chr(34) & " /s /o /h /t " & _
+                      Chr(34) & vollPfad & Chr(34) & " " & Chr(34) & acroDrucker & Chr(34)
+            wsh.Run acroCmd, 7, False          ' 7 = minimiert, ohne Fokus
+            gedruckt = gedruckt + 1
+            ' Erster Auftrag: Acrobat muss erst starten
+            If i = 0 Then
+                Application.Wait Now + TimeValue("00:00:06")
+            Else
+                Application.Wait Now + TimeValue("00:00:03")
+            End If
+            GoTo NaechstesPDF
+        End If
+
+        ' --- Weg 3: Standard-PDF-Programm per ShellExecute ---
+        ' "printto" -> bestimmter Drucker (Druckername in Anfuehrungszeichen)
+        ' "print"   -> Standarddrucker
         Dim result As LongPtr
-        result = ShellExecute( _
-            0, _
-            "print", _
-            vollPfad, _
-            vbNullString, _
-            druckOrdner, _
-            0)          ' 0 = SW_HIDE - kein Fenster
+        If Not nurPrint Then
+            result = ShellExecute(0, "printto", vollPfad, Chr(34) & druckerName & Chr(34), druckOrdner, 0)   ' 0 = SW_HIDE
+            ' 31 = SE_ERR_NOASSOC: PDF-Programm kennt "printto" nicht
+            '      -> ab jetzt "print" mit voruebergehend umgestelltem Standarddrucker
+            If result = 31 Then
+                alterStandard = StandardDrucker()
+                If LCase(alterStandard) <> LCase(druckerName) Then
+                    If Not StandardDruckerSetzen(druckerName) Then
+                        MsgBox "Der Drucker '" & druckerName & "' konnte nicht vor" & Chr(252) & "bergehend als " & _
+                               "Standarddrucker eingestellt werden." & Chr(10) & "Es wurde nichts gedruckt.", _
+                               vbExclamation, "PDFs drucken"
+                        Exit Sub
+                    End If
+                    umgestellt = True
+                End If
+                nurPrint = True
+            End If
+        End If
+        If nurPrint Then
+            result = ShellExecute(0, "print", vollPfad, vbNullString, druckOrdner, 0)
+        End If
+
+        ' Auch "print" unbekannt: dieses PDF-Programm kann gar nicht per Makro drucken
+        If result = 31 Then
+            If umgestellt And alterStandard <> "" Then StandardDruckerSetzen alterStandard
+            MsgBox "Das Standard-PDF-Programm (z.B. Edge) unterst" & Chr(252) & "tzt kein Drucken per Makro." & Chr(10) & Chr(10) & _
+                   "Abhilfe (eine davon gen" & Chr(252) & "gt):" & Chr(10) & _
+                   "- SumatraPDF (kostenlos, portable Version) als SumatraPDF.exe" & Chr(10) & _
+                   "  in den Ordner von lbv_fill.exe legen" & Chr(10) & _
+                   "- Adobe Acrobat Reader als Standard-PDF-Programm einstellen", vbExclamation, "PDFs drucken"
+            Exit Sub
+        End If
 
         If result > 32 Then
             gedruckt = gedruckt + 1
@@ -1735,30 +1961,342 @@ Sub PDFsDrucken()
 
         ' Kurze Pause damit der Drucker-Spooler nicht ueberlastet wird
         Application.Wait Now + TimeValue("00:00:02")
+NaechstesPDF:
     Next i
+    On Error GoTo 0
 
     ' Abschlussmeldung
+    Dim meldung As String
     If fehler = "" Then
-        MsgBox gedruckt & " PDF(s) wurden an den Drucker gesendet.", vbInformation
+        meldung = gedruckt & " PDF(s) wurden an den Drucker gesendet:" & Chr(10) & druckerText
     Else
-        MsgBox gedruckt & " PDF(s) gesendet." & Chr(10) & Chr(10) & _
-               "Fehler bei:" & Chr(10) & fehler, vbExclamation
+        meldung = gedruckt & " PDF(s) gesendet an: " & druckerText & Chr(10) & Chr(10) & _
+                  "Fehler bei:" & Chr(10) & fehler
+    End If
+    If acrobatPfad <> "" Then
+        meldung = meldung & Chr(10) & Chr(10) & _
+                  "Acrobat druckt im Hintergrund weiter und bleibt danach ge" & Chr(246) & "ffnet." & Chr(10) & _
+                  "Es kann geschlossen werden, sobald alles gedruckt ist."
     End If
 
+    If umgestellt Then
+        ' Erst zuruecksetzen, wenn das PDF-Programm alle Auftraege uebernommen hat -
+        ' sonst landen die letzten Dokumente evtl. noch auf dem alten Standarddrucker
+        MsgBox meldung & Chr(10) & Chr(10) & _
+               "Daf" & Chr(252) & "r wurde der Windows-Standarddrucker vor" & Chr(252) & "bergehend umgestellt." & Chr(10) & _
+               "Bitte erst auf OK klicken, wenn alle Dokumente in der Druckwarteschlange" & Chr(10) & _
+               "stehen bzw. gedruckt werden. Danach wird der bisherige Standarddrucker" & Chr(10) & _
+               "wieder eingestellt: " & IIf(alterStandard <> "", alterStandard, "(unbekannt)"), _
+               IIf(fehler = "", vbInformation, vbExclamation), "PDFs drucken"
+        If alterStandard = "" Then
+            MsgBox "Der bisherige Standarddrucker konnte nicht ermittelt werden." & Chr(10) & _
+                   "Bitte in den Windows-Einstellungen wieder den gew" & Chr(252) & "nschten Standarddrucker w" & Chr(228) & "hlen.", _
+                   vbExclamation, "PDFs drucken"
+        ElseIf Not StandardDruckerSetzen(alterStandard) Then
+            MsgBox "Der bisherige Standarddrucker konnte nicht wieder eingestellt werden:" & Chr(10) & alterStandard & Chr(10) & _
+                   "Bitte in den Windows-Einstellungen pr" & Chr(252) & "fen.", vbExclamation, "PDFs drucken"
+        End If
+    Else
+        MsgBox meldung, IIf(fehler = "", vbInformation, vbExclamation), "PDFs drucken"
+    End If
+    Exit Sub
+
+DruckFehler:
+    ' Fehlertext ZUERST sichern - StandardDruckerSetzen setzt Err zurueck
+    Dim fehlerText As String
+    fehlerText = "Fehler beim Drucken (" & Err.Number & "):" & Chr(10) & Err.Description
+    If sumatraPfad <> "" Then fehlerText = fehlerText & Chr(10) & Chr(10) & "Programm: " & sumatraPfad
+    If umgestellt And alterStandard <> "" Then StandardDruckerSetzen alterStandard
+    MsgBox fehlerText, vbCritical, "PDFs drucken"
 End Sub
 
-' ============================================================
-' MAKRO: Mehrarbeit-PDFs per E-Mail versenden
-' ============================================================
+' ----------------------------------------------------------------
+' Hilfsfunktion: aktuellen Windows-Standarddrucker ermitteln ("" = unbekannt)
+' ----------------------------------------------------------------
+Private Function StandardDrucker() As String
+    Dim wmi As Object, liste As Object, d As Object
+    Dim nm As String
+    StandardDrucker = ""
+    On Error Resume Next
+    Set wmi = GetObject("winmgmts:\\.\root\cimv2")
+    If wmi Is Nothing Then Exit Function
+    Set liste = wmi.ExecQuery("SELECT Name FROM Win32_Printer WHERE Default = TRUE")
+    If liste Is Nothing Then Exit Function
+    For Each d In liste
+        nm = "": nm = d.Name & ""
+        If nm <> "" Then
+            StandardDrucker = nm
+            Exit For
+        End If
+    Next d
+End Function
+
+' ----------------------------------------------------------------
+' Hilfsfunktion: Windows-Standarddrucker setzen (True = erfolgreich)
+' ----------------------------------------------------------------
+Private Function StandardDruckerSetzen(ByVal zielDrucker As String) As Boolean
+    Dim net As Object
+    StandardDruckerSetzen = False
+    On Error Resume Next
+    Set net = CreateObject("WScript.Network")
+    If net Is Nothing Then Exit Function
+    Err.Clear
+    net.SetDefaultPrinter zielDrucker
+    StandardDruckerSetzen = (Err.Number = 0)
+End Function
+
+' ----------------------------------------------------------------
+' Hilfsfunktion: SumatraPDF suchen ("" = nicht gefunden)
+' Reihenfolge: Ordner von lbv_fill.exe, Ordner dieser Arbeitsmappe,
+' Standard-Installationsorte. Dateiname "SumatraPDF*.exe" (auch mit
+' Versionsnummer, z.B. SumatraPDF-3.5.2-64.exe), aber kein Installer.
+' ----------------------------------------------------------------
+Private Function SumatraSuchen() As String
+    Dim kandidaten As String, exePfad As String
+    Dim ordner() As String, i As Long, treffer As String
+
+    SumatraSuchen = ""
+    kandidaten = ""
+    exePfad = InfoWertLesen("pfad lbv_fill.exe")
+    If InStrRev(exePfad, "\") > 0 Then kandidaten = kandidaten & "|" & Left(exePfad, InStrRev(exePfad, "\"))
+    If ThisWorkbook.Path <> "" Then kandidaten = kandidaten & "|" & ThisWorkbook.Path & "\"
+    If Environ("LOCALAPPDATA") <> "" Then kandidaten = kandidaten & "|" & Environ("LOCALAPPDATA") & "\SumatraPDF\"
+    If Environ("ProgramFiles") <> "" Then kandidaten = kandidaten & "|" & Environ("ProgramFiles") & "\SumatraPDF\"
+    If Environ("ProgramW6432") <> "" Then kandidaten = kandidaten & "|" & Environ("ProgramW6432") & "\SumatraPDF\"
+    If Environ("ProgramFiles(x86)") <> "" Then kandidaten = kandidaten & "|" & Environ("ProgramFiles(x86)") & "\SumatraPDF\"
+    If kandidaten = "" Then Exit Function
+
+    ordner = Split(Mid(kandidaten, 2), "|")
+    On Error Resume Next            ' Dir scheitert z.B. bei OneDrive-URLs
+    For i = 0 To UBound(ordner)
+        treffer = ""
+        treffer = Dir(ordner(i) & "SumatraPDF*.exe")
+        Do While treffer <> ""
+            If InStr(LCase(treffer), "install") = 0 Then
+                SumatraSuchen = ordner(i) & treffer
+                Exit Function
+            End If
+            treffer = ""
+            treffer = Dir()
+        Loop
+    Next i
+End Function
+
+' ----------------------------------------------------------------
+' Hilfsfunktion: Adobe Acrobat bzw. Acrobat Reader suchen ("" = nicht gefunden)
+' 1) registrierte Programmpfade (App Paths), 2) uebliche Installationsordner.
+' ProgramW6432 = 64-Bit-Programmordner, auch wenn Office 32-bittig ist.
+' ----------------------------------------------------------------
+Private Function AcrobatSuchen() As String
+    Dim wsh As Object, kandidaten As String, wert As String, treffer As String
+    Dim regPfade(5) As String, ordner(2) As String, teile() As String
+    Dim i As Long, j As Long
+
+    AcrobatSuchen = ""
+    kandidaten = ""
+    On Error Resume Next
+
+    regPfade(0) = "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\Acrobat.exe\"
+    regPfade(1) = "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\AcroRd32.exe\"
+    regPfade(2) = "HKLM\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\App Paths\Acrobat.exe\"
+    regPfade(3) = "HKLM\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\App Paths\AcroRd32.exe\"
+    regPfade(4) = "HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\Acrobat.exe\"
+    regPfade(5) = "HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\AcroRd32.exe\"
+    Set wsh = CreateObject("WScript.Shell")
+    If Not wsh Is Nothing Then
+        For i = 0 To 5
+            wert = ""
+            wert = wsh.RegRead(regPfade(i))      ' Fehler = Eintrag fehlt -> bleibt ""
+            wert = Trim(Replace(wert, Chr(34), ""))
+            If wert <> "" Then kandidaten = kandidaten & "|" & wert
+        Next i
+    End If
+
+    ordner(0) = Environ("ProgramW6432")
+    ordner(1) = Environ("ProgramFiles")
+    ordner(2) = Environ("ProgramFiles(x86)")
+    For j = 0 To 2
+        If ordner(j) <> "" Then
+            kandidaten = kandidaten & "|" & ordner(j) & "\Adobe\Acrobat DC\Acrobat\Acrobat.exe"
+            kandidaten = kandidaten & "|" & ordner(j) & "\Adobe\Acrobat Reader DC\Reader\AcroRd32.exe"
+            kandidaten = kandidaten & "|" & ordner(j) & "\Adobe\Acrobat Reader\Reader\AcroRd32.exe"
+        End If
+    Next j
+    If kandidaten = "" Then Exit Function
+
+    teile = Split(Mid(kandidaten, 2), "|")
+    For i = 0 To UBound(teile)
+        treffer = ""
+        treffer = Dir(teile(i))
+        If treffer <> "" Then
+            AcrobatSuchen = teile(i)
+            Exit Function
+        End If
+    Next i
+End Function
+
+' ----------------------------------------------------------------
+' Hilfsfunktion: Wert aus Tabelle Informationen lesen
+' (Spalte A = Beschriftung, Gross-/Kleinschreibung und ":" egal)
+' ----------------------------------------------------------------
+Private Function InfoWertLesen(ByVal schluessel As String) As String
+    Dim wsInfo As Worksheet, r As Long, k As String
+    InfoWertLesen = ""
+    On Error Resume Next
+    Set wsInfo = ThisWorkbook.Worksheets("Informationen")
+    On Error GoTo 0
+    If wsInfo Is Nothing Then Exit Function
+    For r = 1 To wsInfo.Cells(wsInfo.Rows.Count, "A").End(xlUp).Row
+        k = LCase(Trim(CStr(wsInfo.Cells(r, 1).Value)))
+        If Right(k, 1) = ":" Then k = Trim(Left(k, Len(k) - 1))
+        If k = LCase(schluessel) Then
+            InfoWertLesen = Trim(CStr(wsInfo.Cells(r, 2).Value))
+            Exit Function
+        End If
+    Next r
+End Function
+
+' ----------------------------------------------------------------
+' Hilfsfunktion: Textdatei lesen (max. maxZeilen nicht-leere Zeilen)
+' "" wenn die Datei fehlt oder leer ist
+' ----------------------------------------------------------------
+Private Function TextDateiLesen(ByVal pfad As String, ByVal maxZeilen As Long) As String
+    Dim f As Integer, zeile As String, txt As String, n As Long
+    Dim vorhanden As String
+    TextDateiLesen = ""
+    On Error Resume Next
+    vorhanden = ""
+    vorhanden = Dir(pfad)
+    If vorhanden = "" Then Exit Function
+    f = FreeFile
+    Open pfad For Input As #f
+    If Err.Number <> 0 Then Exit Function
+    Do While Not EOF(f)
+        Line Input #f, zeile
+        If Trim(zeile) <> "" And n < maxZeilen Then txt = txt & Trim(zeile) & Chr(10): n = n + 1
+    Loop
+    Close #f
+    TextDateiLesen = txt
+End Function
+
+' ----------------------------------------------------------------
+' Hilfsfunktion: Eintrag "Druckeradresse" aus Tabelle Informationen
+' (Spalte A = Beschriftung, Spalte B = Wert). "" wenn leer/fehlend.
+' ----------------------------------------------------------------
+Private Function DruckerAusInformationen() As String
+    Dim wsInfo As Worksheet
+    Dim r As Long
+    Dim schluessel As String
+    DruckerAusInformationen = ""
+    On Error Resume Next
+    Set wsInfo = ThisWorkbook.Worksheets("Informationen")
+    On Error GoTo 0
+    If wsInfo Is Nothing Then Exit Function
+    For r = 1 To wsInfo.Cells(wsInfo.Rows.Count, "A").End(xlUp).Row
+        schluessel = LCase(Trim(CStr(wsInfo.Cells(r, 1).Value)))
+        If Right(schluessel, 1) = ":" Then schluessel = Trim(Left(schluessel, Len(schluessel) - 1))
+        Select Case schluessel
+            Case "druckeradresse", "drucker-adresse", "drucker", "druckername", "drucker-ip", "drucker ip"
+                DruckerAusInformationen = Trim(CStr(wsInfo.Cells(r, 2).Value))
+                Exit Function
+        End Select
+    Next r
+End Function
+
+' ----------------------------------------------------------------
+' Hilfsfunktion: Eingabe (Druckername, \\server\drucker oder IP-Adresse)
+' einem auf diesem PC installierten Drucker zuordnen.
+' Rueckgabe: Windows-Druckername oder "" (nicht gefunden).
+' liste: alle installierten Drucker (fuer die Fehlermeldung)
+' ----------------------------------------------------------------
+Private Function DruckerAufloesen(ByVal eingabe As String, ByRef liste As String) As String
+    Dim suche As String, sucheAdr As String
+    Dim wmi As Object, ports As Object, port As Object, alle As Object, d As Object
+    Dim portTreffer As String
+    Dim nm As String, freigabe As String, server As String, portListe As String
+    Dim teile() As String, p As Long, pt As String
+    Dim treffer As String
+
+    DruckerAufloesen = ""
+    liste = ""
+    suche = LCase(Trim(eingabe))
+    ' Adresse ohne "http://", "https://" und abschliessendes "/"
+    sucheAdr = Replace(Replace(suche, "https://", ""), "http://", "")
+    If Right(sucheAdr, 1) = "/" Then sucheAdr = Left(sucheAdr, Len(sucheAdr) - 1)
+
+    On Error Resume Next
+    Set wmi = GetObject("winmgmts:\\.\root\cimv2")
+    If wmi Is Nothing Then
+        ' WMI nicht verfuegbar: Eingabe unveraendert als Druckername verwenden
+        DruckerAufloesen = Trim(eingabe)
+        Exit Function
+    End If
+
+    ' 1) Standard-TCP/IP-Ports mit dieser Adresse sammeln
+    portTreffer = "|"
+    Set ports = wmi.ExecQuery("SELECT Name, HostAddress FROM Win32_TCPIPPrinterPort")
+    If Not ports Is Nothing Then
+        For Each port In ports
+            nm = "": nm = LCase(Trim(port.Name & ""))
+            pt = "": pt = LCase(Trim(port.HostAddress & ""))
+            If pt = sucheAdr Or nm = sucheAdr Then portTreffer = portTreffer & nm & "|"
+        Next port
+    End If
+
+    ' 2) Installierte Drucker durchsuchen
+    treffer = ""
+    Set alle = wmi.ExecQuery("SELECT Name, ShareName, SystemName, PortName FROM Win32_Printer")
+    If Not alle Is Nothing Then
+        For Each d In alle
+            nm = "": nm = Trim(d.Name & "")
+            freigabe = "": freigabe = LCase(Trim(d.ShareName & ""))
+            server = "": server = LCase(Trim(d.SystemName & ""))
+            portListe = "": portListe = LCase(d.PortName & "")
+            liste = liste & "  " & nm & vbLf
+
+            If treffer = "" Then
+                ' a) exakter Druckername (Netzwerkdrucker heissen "\\server\freigabe")
+                If LCase(nm) = suche Then treffer = nm
+                ' b) Freigabename oder \\server\freigabe
+                If treffer = "" And freigabe <> "" Then
+                    If freigabe = suche Then treffer = nm
+                    If server <> "" Then
+                        If "\\" & Replace(server, "\\", "") & "\" & freigabe = suche Then treffer = nm
+                    End If
+                End If
+                ' c) Anschluss (Port) mit der IP-Adresse, z.B. "192.168.1.50" oder "IP_192.168.1.50"
+                If treffer = "" Then
+                    teile = Split(portListe, ",")
+                    For p = 0 To UBound(teile)
+                        pt = Trim(teile(p))
+                        If pt <> "" Then
+                            If pt = sucheAdr Or pt = "ip_" & sucheAdr Or _
+                               InStr(portTreffer, "|" & pt & "|") > 0 Then
+                                treffer = nm
+                                Exit For
+                            End If
+                        End If
+                    Next p
+                End If
+            End If
+        Next d
+    End If
+    On Error GoTo 0
+
+    DruckerAufloesen = treffer
+End Function
+
 ' ============================================================
 ' MAKRO: Mehrarbeit-PDFs per E-Mail versenden (Outlook)
-' Nur Lehrer, die in der Uebersicht bei "PDF erstellen" auf 1 stehen.
-' Absenderkonto: Zeile "Outlook-Absender" in der Tabelle Informationen
-' (leer = Standardkonto von Outlook).
+' Absender: Zeile "Outlook-Absender" in Tabelle Informationen (Spalte B).
+'   Leer oder Zeile fehlt -> Outlook-Standardkonto.
+'   Adresse in Outlook nicht eingerichtet -> Abbruch vor dem Versand.
 ' ============================================================
 Public Sub MehrarbeitPDFsVersenden()
     Dim ws3 As Worksheet
     Set ws3 = Nothing
+    Dim wbName As String
+    wbName = ThisWorkbook.Name
 
     ' Tabelle Uebersicht finden
     Dim ws As Worksheet
@@ -1772,49 +2310,12 @@ Public Sub MehrarbeitPDFsVersenden()
         MsgBox "Tabelle " & Chr(220) & "bersicht nicht gefunden.", vbCritical: Exit Sub
     End If
 
-    ' Absenderadresse aus Tabelle Informationen lesen
-    Dim absenderAdr As String: absenderAdr = ""
-    Dim wsInfo As Worksheet
-    Set wsInfo = Nothing
-    Dim wsI As Worksheet
-    For Each wsI In ThisWorkbook.Worksheets
-        If LCase(wsI.Name) Like "*informationen*" Then
-            Set wsInfo = wsI: Exit For
-        End If
-    Next wsI
-    If Not wsInfo Is Nothing Then
-        Dim iRow As Long
-        For iRow = 1 To wsInfo.Cells(wsInfo.Rows.Count, "A").End(xlUp).Row
-            Select Case LCase(Trim(wsInfo.Cells(iRow, 1).Value))
-                Case "outlook-absender", "outlook-absender:"
-                    absenderAdr = Trim(CStr(wsInfo.Cells(iRow, 2).Value))
-                    Exit For
-            End Select
-        Next iRow
-    End If
-
     ' Spalten ermitteln
-    Dim colKuerzel As Integer, colEmail As Integer, colPDF As Integer
+    Dim colKuerzel As Integer, colEmail As Integer
     colKuerzel = 1  ' Spalte A = Kuerzel
     colEmail = SpalteUebersicht(ws3, "emailadresse")
     If colEmail = 0 Then
         MsgBox "Spalte 'emailadresse' nicht in " & Chr(220) & "bersicht gefunden.", vbCritical: Exit Sub
-    End If
-    colPDF = SpaltePDF()   ' Spalte "PDF erstellen" (wird bei Bedarf angelegt)
-
-    Dim lastRow As Long
-    lastRow = ws3.Cells(ws3.Rows.Count, 1).End(xlUp).Row
-
-    ' Pruefen, ob ueberhaupt Lehrer markiert sind
-    Dim anzahlMarkiert As Long: anzahlMarkiert = 0
-    Dim rz As Long
-    For rz = 2 To lastRow
-        If Trim(ws3.Cells(rz, colKuerzel).Value) <> "" And ws3.Cells(rz, colPDF).Value = 1 Then
-            anzahlMarkiert = anzahlMarkiert + 1
-        End If
-    Next rz
-    If anzahlMarkiert = 0 Then
-        MsgBox "Keine Lehrer in der Spalte 'PDF erstellen' markiert.", vbExclamation: Exit Sub
     End If
 
     ' Ordner mit PDFs auswaehlen
@@ -1827,7 +2328,7 @@ Public Sub MehrarbeitPDFsVersenden()
         End If
         pdfOrdner = .SelectedItems(1)
     End With
-    If Right(pdfOrdner, 1) <> "\" Then pdfOrdner = pdfOrdner & "\"
+    If Right(pdfOrdner, 1) <> "" Then pdfOrdner = pdfOrdner & ""
 
     ' Outlook-Objekt erstellen
     Dim olApp As Object
@@ -1839,44 +2340,55 @@ Public Sub MehrarbeitPDFsVersenden()
         MsgBox "Outlook konnte nicht gestartet werden.", vbCritical: Exit Sub
     End If
 
-    ' Absenderkonto suchen
-    ' - Adresse eingetragen: Konto muss in Outlook existieren, sonst Abbruch
-    ' - Adresse leer: Standardkonto von Outlook wird verwendet
+    Dim lastRow As Long
+    lastRow = ws3.Cells(ws3.Rows.Count, 1).End(xlUp).Row
+
+    ' Absenderkonto aus Tabelle Informationen (Zeile "Outlook-Absender")
+    Dim absenderAdr As String
+    absenderAdr = InfoWertLesen("outlook-absender")
+
     Dim zielKonto As Object
-    Set zielKonto = Nothing
+    Dim olAccount As Object
+    Dim kontenListe As String: kontenListe = ""
     If absenderAdr <> "" Then
-        Dim olAccount As Object
-        Dim kontenListe As String: kontenListe = ""
         For Each olAccount In olApp.Session.Accounts
             kontenListe = kontenListe & "  " & olAccount.SmtpAddress & Chr(10)
-            If LCase(olAccount.SmtpAddress) = LCase(absenderAdr) Then
+            If LCase(Trim(olAccount.SmtpAddress)) = LCase(absenderAdr) Then
                 Set zielKonto = olAccount
                 Exit For
             End If
         Next olAccount
         If zielKonto Is Nothing Then
-            MsgBox "Das Absenderkonto '" & absenderAdr & "' ist in Outlook nicht eingerichtet." & _
-                   Chr(10) & Chr(10) & "Vorhandene Konten:" & Chr(10) & kontenListe & Chr(10) & _
-                   "Bitte die Zeile 'Outlook-Absender' in der Tabelle Informationen pr" & Chr(252) & "fen.", _
-                   vbCritical, "Absenderkonto fehlt"
+            MsgBox "Das Absenderkonto aus Tabelle Informationen (Zeile 'Outlook-Absender')" & Chr(10) & _
+                   "ist in Outlook nicht eingerichtet:" & Chr(10) & "  " & absenderAdr & Chr(10) & Chr(10) & _
+                   "Vorhandene Outlook-Konten:" & Chr(10) & kontenListe & Chr(10) & _
+                   "Es wurde nichts gesendet.", vbExclamation, "E-Mail-Versand"
             Exit Sub
         End If
     End If
 
-    Dim gesendet As Integer, keinEmail As Integer, keinPDF As Integer, nichtMarkiert As Integer
-    gesendet = 0: keinEmail = 0: keinPDF = 0: nichtMarkiert = 0
+    Dim absenderText As String
+    If zielKonto Is Nothing Then
+        absenderText = "Outlook-Standardkonto (Zeile 'Outlook-Absender' ist leer)"
+    Else
+        absenderText = absenderAdr
+    End If
 
+    ' Rueckfrage: die Mails werden ohne Vorschau sofort gesendet
+    If MsgBox("Die E-Mails werden ohne Vorschau sofort gesendet." & Chr(10) & Chr(10) & _
+              "Absender:  " & absenderText & Chr(10) & _
+              "PDF-Ordner:  " & pdfOrdner & Chr(10) & Chr(10) & _
+              "Versand starten?", vbOKCancel + vbQuestion, "E-Mail-Versand") = vbCancel Then Exit Sub
+
+    Dim gesendet As Integer, keinEmail As Integer, keinPDF As Integer
+    gesendet = 0: keinEmail = 0: keinPDF = 0
+
+    ' Alle Lehrer durchgehen
     Dim r As Long
     For r = 2 To lastRow
         Dim kuerzel As String
         kuerzel = Trim(ws3.Cells(r, colKuerzel).Value)
         If kuerzel = "" Then GoTo NaechsterLehrer
-
-        ' Nur markierte Lehrer ("PDF erstellen" = 1)
-        If ws3.Cells(r, colPDF).Value <> 1 Then
-            nichtMarkiert = nichtMarkiert + 1
-            GoTo NaechsterLehrer
-        End If
 
         Dim emailAdr As String
         emailAdr = Trim(ws3.Cells(r, colEmail).Value)
@@ -1887,6 +2399,7 @@ Public Sub MehrarbeitPDFsVersenden()
 
         ' Alle passenden PDFs finden: Mehrarbeit_<kuerzel>_*.pdf
         Dim suchMuster As String
+        If Right(pdfOrdner, 1) <> "\" Then pdfOrdner = pdfOrdner & "\"
         suchMuster = pdfOrdner & "Mehrarbeit_" & kuerzel & "_*.pdf"
         Dim gefundenePDF As String
         gefundenePDF = Dir(suchMuster)
@@ -1923,11 +2436,10 @@ NaechsterLehrer:
     Next r
 
     MsgBox "Fertig!" & Chr(10) & _
-           "Absender: " & IIf(absenderAdr = "", "Outlook-Standardkonto", absenderAdr) & Chr(10) & _
+           "Absender: " & absenderText & Chr(10) & _
            "Gesendet: " & gesendet & Chr(10) & _
            "Keine E-Mail-Adresse: " & keinEmail & Chr(10) & _
-           "Keine PDF gefunden: " & keinPDF & Chr(10) & _
-           "Nicht markiert (" & Chr(252) & "bersprungen): " & nichtMarkiert, vbInformation, "E-Mail-Versand"
+           "Keine PDF gefunden: " & keinPDF, vbInformation, "E-Mail-Versand"
 End Sub
 
 ' ============================================================
