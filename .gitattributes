@@ -1,0 +1,5 @@
+# VBA-Dateien unveraendert mit Windows-Zeilenenden (CRLF) speichern,
+# damit sie nach dem Herunterladen direkt in Excel importiert werden koennen.
+*.bas -text
+*.cls -text
+*.frm -text

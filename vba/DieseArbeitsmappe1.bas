@@ -1,8 +1,15 @@
 Attribute VB_Name = "DieseArbeitsmappe1"
+' ================================================================
+'  Doppelklick in Spalte "PDF erstellen" der Uebersicht: 0 <-> 1
+'  WICHTIG: Diesen Code NICHT als Modul importieren, sondern im
+'  VBA-Editor unter "Microsoft Excel Objekte" in DieseArbeitsmappe
+'  einfuegen (ab "Private Sub" bis "End Sub"). Nur dort loest Excel
+'  das Doppelklick-Ereignis aus.
+' ================================================================
 
 Private Sub Workbook_SheetBeforeDoubleClick(ByVal Sh As Object, ByVal Target As Range, Cancel As Boolean)
 
-    ' Nur in der Übersicht reagieren
+    ' Nur in der Uebersicht reagieren
     If Sh.Name <> Chr(220) & "bersicht" Then Exit Sub
 
     ' Spalte "PDF erstellen" ermitteln
