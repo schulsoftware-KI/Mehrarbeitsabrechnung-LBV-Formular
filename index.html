@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mehrarbeitsabrechnung – vom Untis-Export zum LBV-Formular</title>
+<meta name="description" content="Kostenloses Excel-Makro mit Hilfsprogrammen: berechnet die Mehrarbeit je Lehrkraft aus dem Untis-Export und füllt die LBV-Formulare zur Mehrarbeitsvergütung automatisch aus. Inoffizielles Hilfsmittel.">
+<link rel="canonical" href="https://schulsoftware-ki.github.io/Mehrarbeitsabrechnung-LBV-Formular/">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='1' y='1' width='30' height='30' rx='7' fill='%231b2a4a'/%3E%3Crect x='7' y='9' width='8' height='6' rx='1.5' fill='%23dce7f3'/%3E%3Crect x='17' y='9' width='8' height='6' rx='1.5' fill='%23dce7f3'/%3E%3Crect x='7' y='17' width='8' height='6' rx='1.5' fill='%23dce7f3'/%3E%3Crect x='17' y='17' width='8' height='6' rx='1.5' fill='%232e8b57'/%3E%3C/svg%3E">
+<style>
+  :root{
+    --navy:#1b2a4a;
+    --navy-2:#22345c;
+    --steel:#2e5a8a;
+    --seat:#dce7f3;
+    --seat-line:#b9cde6;
+    --paper:#f4f6fa;
+    --ink:#1d2733;
+    --ink-soft:#5a6675;
+    --line:#dde3ec;
+    --green:#2e8b57;
+    --green-dark:#256f46;
+    --red:#c0392b;
+    --amber:#b7791f;
+    --amber-bg:#fdf3e1;
+    --card:#ffffff;
+    --radius:10px;
+    --maxw:1080px;
+  }
+  *{box-sizing:border-box;}
+  html{scroll-behavior:smooth;}
+  body{
+    margin:0;
+    font-family:"Segoe UI","Segoe UI Web (West European)",Roboto,-apple-system,BlinkMacSystemFont,Arial,sans-serif;
+    color:var(--ink);
+    background:var(--paper);
+    line-height:1.6;
+    -webkit-font-smoothing:antialiased;
+  }
+  a{color:var(--steel);}
+  h1,h2,h3{line-height:1.2;margin:0;font-weight:600;letter-spacing:-0.01em;}
+  .wrap{max-width:var(--maxw);margin:0 auto;padding:0 24px;}
+
+  /* ── Kopf / Blackboard-Leiste ── */
+  .topbar{
+    background:var(--navy);
+    color:#fff;
+    padding:14px 0;
+    border-bottom:3px solid var(--steel);
+  }
+  .topbar .wrap{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;}
+  .brand{display:flex;align-items:center;gap:12px;font-weight:600;font-size:1.05rem;color:#fff;text-decoration:none;}
+  .brand .mark{
+    width:26px;height:26px;border-radius:6px;flex:0 0 auto;
+    background:linear-gradient(180deg,#3f6aa5,#22345c);
+    border:1px solid #4a75b0;
+  }
+  .topnav a.home{color:#fff;}
+  .topnav a.home::before{content:"← ";}
+  .topnav a{color:#c9d6ea;text-decoration:none;margin-left:22px;font-size:.95rem;}
+  .topnav a:hover{color:#fff;}
+
+  /* ── Hero ── */
+  .hero{padding:64px 0 40px;}
+  .hero .wrap{display:grid;grid-template-columns:1.1fr .9fr;gap:48px;align-items:center;}
+  .eyebrow{
+    text-transform:uppercase;letter-spacing:.14em;font-size:.72rem;font-weight:600;
+    color:var(--steel);margin-bottom:14px;
+  }
+  .hero h1{font-size:2.5rem;margin-bottom:16px;}
+  .hero p.lead{font-size:1.12rem;color:var(--ink-soft);margin:0 0 28px;max-width:38ch;}
+  .cta-row{display:flex;flex-wrap:wrap;gap:12px;align-items:center;}
+  .btn{
+    display:inline-flex;align-items:center;gap:9px;
+    padding:12px 20px;border-radius:8px;font-size:.98rem;font-weight:600;
+    text-decoration:none;border:1px solid transparent;transition:background .15s,transform .05s;
+    font-family:inherit;cursor:pointer;
+  }
+  .btn:active{transform:translateY(1px);}
+  .btn-primary{background:var(--green);color:#fff;}
+  .btn-primary:hover{background:var(--green-dark);}
+  .btn-secondary{background:#fff;color:var(--navy);border-color:var(--line);}
+  .btn-secondary:hover{border-color:var(--steel);}
+  .btn-sm{padding:8px 14px;font-size:.9rem;}
+  .btn .ic{font-size:1.05rem;line-height:1;}
+  .platform-note{font-size:.82rem;color:var(--ink-soft);margin-top:14px;}
+
+  /* ── Hero-Signatur: Karte mit Tafel-Kopf ── */
+  .plan{
+    background:#fff;border:1px solid var(--line);border-radius:var(--radius);
+    padding:16px;box-shadow:0 12px 30px rgba(27,42,74,.08);
+  }
+  .plan .board{
+    background:var(--navy);color:#fff;text-align:center;font-size:.62rem;font-weight:600;
+    letter-spacing:.16em;padding:6px;border-radius:5px;margin-bottom:14px;
+  }
+  .seat{
+    background:var(--seat);border:1px solid var(--seat-line);border-radius:6px;
+    height:34px;display:flex;align-items:center;justify-content:center;
+    font-size:.62rem;color:var(--steel);font-weight:600;
+  }
+  .seat.free{background:#f5f7fa;color:#aeb8c6;border-style:dashed;}
+  .seat.warn{background:#f9dcd8;border-color:var(--red);color:var(--red);}
+  .seat.ok{background:#dcefe3;border-color:#9fcfb1;color:var(--green-dark);}
+
+  /* ── Sektionen ── */
+  section{padding:56px 0;border-top:1px solid var(--line);}
+  .section-head{max-width:60ch;margin-bottom:36px;}
+  .section-head .eyebrow{margin-bottom:10px;}
+  .section-head h2{font-size:1.7rem;margin-bottom:10px;}
+  .section-head p{color:var(--ink-soft);margin:0;}
+
+  /* ── Funktionen ── */
+  .features{display:grid;grid-template-columns:repeat(3,1fr);gap:20px;}
+  .features.four{grid-template-columns:repeat(4,1fr);}
+  .feature{
+    background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
+    padding:22px;
+  }
+  .feature h3{font-size:1.05rem;margin-bottom:8px;color:var(--navy);}
+  .feature p{margin:0;color:var(--ink-soft);font-size:.94rem;}
+  .tag{
+    display:inline-block;font-size:.66rem;font-weight:600;letter-spacing:.08em;
+    text-transform:uppercase;color:var(--steel);background:#eaf1f9;
+    border-radius:5px;padding:3px 8px;margin-bottom:12px;
+  }
+
+  /* ── Schritte / Voraussetzungen ── */
+  .install{display:grid;grid-template-columns:1.2fr .8fr;gap:36px;align-items:start;}
+  .steps{counter-reset:step;list-style:none;padding:0;margin:0;}
+  .steps li{position:relative;padding:0 0 18px 46px;color:var(--ink-soft);}
+  .steps li::before{
+    counter-increment:step;content:counter(step);
+    position:absolute;left:0;top:-2px;width:30px;height:30px;border-radius:50%;
+    background:var(--navy);color:#fff;font-weight:600;font-size:.9rem;
+    display:flex;align-items:center;justify-content:center;
+  }
+  .steps li b{color:var(--ink);}
+  .req{background:#fff;border:1px solid var(--line);border-radius:var(--radius);padding:22px;}
+  .req h3{font-size:1rem;color:var(--navy);margin-bottom:12px;}
+  .req dl{margin:0;display:grid;grid-template-columns:auto 1fr;gap:8px 14px;font-size:.92rem;}
+  .req dt{color:var(--ink-soft);}
+  .req dd{margin:0;font-weight:600;}
+  .req + .req{margin-top:20px;}
+  code{font-family:Consolas,"Cascadia Mono",ui-monospace,monospace;font-size:.88em;background:#eaf1f9;color:var(--navy);padding:1px 5px;border-radius:4px;}
+
+  /* ── Hinweise ── */
+  .notes{list-style:none;padding:0;margin:0;display:grid;gap:12px;}
+  .notes li{
+    background:#fff;border:1px solid var(--line);border-left:4px solid var(--amber);
+    border-radius:var(--radius);padding:14px 18px;color:var(--ink-soft);font-size:.94rem;
+  }
+  .notes li b{color:var(--ink);}
+  .callout{
+    background:var(--amber-bg);border:1px solid #efd3a3;border-radius:var(--radius);
+    padding:14px 18px;font-size:.92rem;color:#6b4a12;margin-top:28px;
+  }
+
+  /* ── Fuß ── */
+  footer{background:var(--navy);color:#c9d6ea;padding:32px 0;font-size:.9rem;}
+  footer .wrap{display:flex;justify-content:space-between;flex-wrap:wrap;gap:12px;}
+  footer a{color:#fff;}
+
+  /* ── Hero-Signatur: stilisierte Übersichtstabelle ── */
+  .sheet{width:100%;border-collapse:separate;border-spacing:0 6px;font-size:.78rem;}
+  .sheet th{
+    font-size:.6rem;font-weight:600;letter-spacing:.1em;text-transform:uppercase;
+    color:var(--ink-soft);text-align:center;padding:0 6px 2px;
+  }
+  .sheet th:first-child{text-align:left;}
+  .sheet td{
+    background:var(--seat);border-top:1px solid var(--seat-line);border-bottom:1px solid var(--seat-line);
+    padding:7px 8px;text-align:center;color:var(--steel);font-weight:600;
+  }
+  .sheet td:first-child{border-left:1px solid var(--seat-line);border-radius:6px 0 0 6px;text-align:left;color:var(--navy);}
+  .sheet td:last-child{border-right:1px solid var(--seat-line);border-radius:0 6px 6px 0;}
+  .sheet tr.on td{background:#dcefe3;border-color:#9fcfb1;color:var(--green-dark);}
+  .sheet tr.on td:first-child{color:var(--green-dark);}
+  .sheet tr.off td{background:#f5f7fa;color:#aeb8c6;border-top-style:dashed;border-bottom-style:dashed;}
+  .sheet tr.off td:first-child{border-left-style:dashed;}
+  .sheet tr.off td:last-child{border-right-style:dashed;}
+  .outputs{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;}
+  .outputs span{
+    flex:1 1 auto;text-align:center;font-size:.64rem;font-weight:600;letter-spacing:.06em;
+    color:var(--navy);background:#fff;border:1px solid var(--line);border-radius:6px;padding:6px 8px;
+  }
+  .outputs span::before{content:"📄 ";}
+  /* ── Responsiv ── */
+  @media (max-width:860px){
+    .hero{padding:40px 0 32px;}
+    .hero .wrap{grid-template-columns:1fr;gap:32px;}
+    .hero h1{font-size:2rem;}
+    .features,.features.four,.progs{grid-template-columns:1fr 1fr;}
+    .install,.contact{grid-template-columns:1fr;}
+    .topnav a:not(.home){display:none;}
+    .topnav a.home{margin-left:0;}
+  }
+  @media (max-width:520px){
+    .wrap{padding:0 18px;}
+    .features,.features.four,.progs{grid-template-columns:1fr;}
+    .hero h1{font-size:1.7rem;}
+    section{padding:44px 0;}
+  }
+  @media (prefers-reduced-motion:reduce){html{scroll-behavior:auto;}}
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="wrap">
+    <div class="brand"><span class="mark"></span>Mehrarbeitsabrechnung</div>
+    <nav class="topnav">
+      <a class="home" href="https://schulsoftware-ki.github.io/">Alle Programme</a>
+      <a href="#funktionen">Funktionen</a>
+      <a href="#einrichtung">Einrichtung</a>
+      <a href="#hinweise">Hinweise</a>
+      <a href="https://github.com/schulsoftware-KI/Mehrarbeitsabrechnung-LBV-Formular">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<!-- ── Hero ── -->
+<div class="hero">
+  <div class="wrap">
+    <div>
+      <div class="eyebrow">Excel-Makro mit Hilfsprogrammen · für Schulen mit Untis</div>
+      <h1>Vom Untis-Export zum ausgefüllten LBV-Formular.</h1>
+      <p class="lead">Die Arbeitsmappe berechnet die Mehrarbeit je Lehrkraft aus der Untis-Vertretungsabrechnung und füllt die Formulare zur Mehrarbeitsvergütung automatisch aus – einzeln, als Gesamtformular über mehrere Monate oder als Sammeldatei.</p>
+      <div class="cta-row">
+        <a class="btn btn-primary" href="https://github.com/schulsoftware-KI/Mehrarbeitsabrechnung-LBV-Formular/releases">
+          <span class="ic">↓</span> Zur Download-Seite
+        </a>
+        <a class="btn btn-secondary" href="beispiel/Vertretungsabrechnung_Beispiel.xlsm" download>
+          <span class="ic">📊</span> Beispieldatei (Excel)
+        </a>
+        <a class="btn btn-secondary" href="docs/Kurzanleitung%20Vertretungsabrechnung.docx" download>
+          <span class="ic">📄</span> Kurzanleitung (Word)
+        </a>
+      </div>
+      <p class="platform-note">Für Windows mit Microsoft Excel · inoffizielles Hilfsmittel, keine Software des LBV oder eines Ministeriums.</p>
+    </div>
+
+    <!-- Signatur: Übersicht je Lehrkraft (mit Pseudonymen) -->
+    <div class="plan" aria-hidden="true">
+      <div class="board">ÜBERSICHT · ABRECHNUNGSMONAT</div>
+      <table class="sheet">
+        <thead><tr><th>Kürzel</th><th>Vertretungen</th><th>Entfälle</th><th>PDF</th></tr></thead>
+        <tbody>
+          <tr class="on"><td>L1</td><td>9</td><td>2</td><td>1</td></tr>
+          <tr class="on"><td>L2</td><td>6</td><td>0</td><td>1</td></tr>
+          <tr class="off"><td>L3</td><td>1</td><td>1</td><td>0</td></tr>
+          <tr class="on"><td>L4</td><td>7</td><td>3</td><td>1</td></tr>
+        </tbody>
+      </table>
+      <div class="outputs"><span>LBV-Formulare</span><span>Sammeldatei</span><span>E-Mail</span></div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Funktionen ── -->
+<section id="funktionen">
+  <div class="wrap">
+    <div class="section-head">
+      <div class="eyebrow">Was das Werkzeug kann</div>
+      <h2>Rechnen, ausfüllen, drucken, versenden</h2>
+      <p>Die Excel-Arbeitsmappe übernimmt die Berechnung, vier kleine Hilfsprogramme erledigen die Arbeit mit den PDF-Formularen.</p>
+    </div>
+    <div class="features">
+      <div class="feature">
+        <span class="tag">Import</span>
+        <h3>Untis-Export einlesen</h3>
+        <p>Die Vertretungsabrechnung aus Untis wird importiert und je Lehrkraft summiert – Entfälle, Vertretungen und Bagatellgrenze inklusive.</p>
+      </div>
+      <div class="feature">
+        <span class="tag">Pseudonyme</span>
+        <h3>Namen geschützt</h3>
+        <p>Die Lehrkräfte werden in der Arbeitsmappe über Kürzel wie L1, L2 … verarbeitet, damit die Untis-Daten nicht im Klartext herumliegen.</p>
+      </div>
+      <div class="feature">
+        <span class="tag">Abrechnung</span>
+        <h3>Einzel- und Sammel-PDF</h3>
+        <p>Für jede markierte Lehrkraft entsteht ein Abrechnungs-PDF, auf Wunsch auch eine gemeinsame Datei.</p>
+      </div>
+      <div class="feature">
+        <span class="tag">Formular</span>
+        <h3>LBV-Formular ausfüllen</h3>
+        <p>Das Formular zur Mehrarbeitsvergütung wird je Lehrkraft samt Barcode automatisch befüllt.</p>
+      </div>
+      <div class="feature">
+        <span class="tag">Mehrere Monate</span>
+        <h3>Gesamtformular</h3>
+        <p>Die Monatsformulare einer Lehrkraft werden zu einem Gesamtformular zusammengeführt.</p>
+      </div>
+      <div class="feature">
+        <span class="tag">Sammeldatei</span>
+        <h3>Eine PDF für alle</h3>
+        <p>Alle Einzel- oder Gesamtformulare in einer Datei, mit Lesezeichen je Formular.</p>
+      </div>
+      <div class="feature">
+        <span class="tag">Drucken</span>
+        <h3>Ganzen Ordner drucken</h3>
+        <p>Alle PDFs eines Ordners auf einen festgelegten Drucker – über SumatraPDF, Adobe Acrobat oder das Standard-PDF-Programm.</p>
+      </div>
+      <div class="feature">
+        <span class="tag">E-Mail</span>
+        <h3>Direkt versenden</h3>
+        <p>Abrechnungs-PDFs über Outlook oder per SMTP verschicken, mit frei wählbarem Absenderkonto.</p>
+      </div>
+      <div class="feature">
+        <span class="tag">Quellcode</span>
+        <h3>Offen und prüfbar</h3>
+        <p>VBA-Module und Python-Quellcode liegen offen auf GitHub; die EXE-Dateien lassen sich auch selbst bauen.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── Einrichtung ── -->
+<section id="einrichtung">
+  <div class="wrap">
+    <div class="section-head">
+      <div class="eyebrow">Einmalig</div>
+      <h2>Einrichtung</h2>
+      <p>Einmal eingerichtet, läuft jede Monatsabrechnung in wenigen Klicks.</p>
+    </div>
+    <div class="install">
+      <ol class="steps">
+        <li><b>Beispieldatei herunterladen und freigeben.</b> Rechtsklick auf die Datei → Eigenschaften → Haken bei „Zulassen“. Sonst blockiert Office die Makros.</li>
+        <li><b>Hilfsprogramme ablegen.</b> <code>lbv_fill</code>, <code>lbv_merge</code>, <code>lbv_sammel</code> und <code>lbv_email</code> von der Download-Seite in einen gemeinsamen Ordner legen.</li>
+        <li><b>LBV-Vorlage besorgen.</b> Das leere Formular (PDF) selbst beim LBV beziehen und lokal speichern – es ist bewusst nicht enthalten.</li>
+        <li><b>Tabelle „Informationen“ ausfüllen.</b> Dienststelle, Schulnummer, Bearbeiter, Minuten je Unterrichtsstunde sowie die Pfade zur Vorlage und zu <code>lbv_fill.exe</code>.</li>
+        <li><b>Pseudonyme anlegen.</b> In der Tabelle „Pseudonyme“ Kürzel, Nachname und Vorname des Kollegiums eintragen.</li>
+      </ol>
+      <div class="req">
+        <h3>Voraussetzungen</h3>
+        <dl>
+          <dt>System</dt><dd>Windows mit Microsoft Excel</dd>
+          <dt>Makros</dt><dd>müssen zugelassen sein</dd>
+          <dt>Hilfsprogramme</dt><dd>EXE-Dateien oder Python 3</dd>
+          <dt>Formular</dt><dd>LBV(A/Bes)23_2019_02</dd>
+          <dt>Daten</dt><dd>Untis-Export „Vertretungsabrechnung“</dd>
+          <dt>Lizenz</dt><dd>MIT</dd>
+        </dl>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── Monatlicher Ablauf ── -->
+<section id="ablauf">
+  <div class="wrap">
+    <div class="section-head">
+      <div class="eyebrow">Jeden Monat</div>
+      <h2>Ablauf einer Abrechnung</h2>
+    </div>
+    <ol class="steps">
+      <li><b>In Untis exportieren.</b> Berichte → Vertretungsplanung → Vertretungsabrechnung, Abrechnungsmonat wählen und als Excel exportieren.</li>
+      <li><b>Einlesen.</b> In der Arbeitsmappe „Tabelle1 importieren“, danach in der Übersicht „Summen einlesen“.</li>
+      <li><b>Lehrkräfte markieren.</b> In der Spalte „PDF erstellen“ mit 0/1 oder per Doppelklick auswählen.</li>
+      <li><b>Formulare erzeugen.</b> „PDFs erstellen“ bzw. „LBV-Formular erstellen“ klicken.</li>
+      <li><b>Weiterverarbeiten.</b> Bei Bedarf „Merge LBV“ für mehrere Monate, „LBV-Sammeldatei“, „PDFs drucken“ oder per E-Mail versenden.</li>
+    </ol>
+  </div>
+</section>
+
+<!-- ── Hinweise ── -->
+<section id="hinweise">
+  <div class="wrap">
+    <div class="section-head">
+      <div class="eyebrow">Bitte beachten</div>
+      <h2>Wichtige Hinweise</h2>
+    </div>
+    <ul class="notes">
+      <li><b>Inoffizielles Hilfsmittel.</b> Das Werkzeug ist keine Software des LBV oder eines Ministeriums. Alle Ergebnisse müssen vor dem Einreichen geprüft werden; die Nutzung erfolgt auf eigene Verantwortung und ohne Gewähr.</li>
+      <li><b>Formularversion.</b> Barcode und Feldnamen gehören zur Formularversion 2019_02 und müssen bei einer neuen Version angepasst werden.</li>
+      <li><b>Teilzeit im Tarifbereich.</b> Bereich C des Formulars muss in der Regel von Hand geprüft bzw. bearbeitet werden.</li>
+      <li><b>Datenschutz.</b> Die Arbeitsmappe enthält personenbezogene Daten (Personalnummer, Geburtsdatum, Aktenzeichen). Nur an freigegebenen Orten speichern, niemals echte Daten hochladen und den Einsatz mit Schulleitung und Datenschutzbeauftragten klären.</li>
+      <li><b>E-Mail-Versand per SMTP.</b> Das Passwort steht im Klartext in der Arbeitsmappe und wird beim Versand vorübergehend in <code>%TEMP%\lbv_email.json</code> abgelegt. Am besten ein eigenes Konto nutzen und die Datei nach dem Versand löschen.</li>
+      <li><b>Virenscanner und SmartScreen.</b> Die EXE-Dateien sind nicht signiert und lösen häufig Fehlalarme aus. Quellcode prüfen, Prüfsummen vergleichen oder die Dateien selbst bauen.</li>
+    </ul>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <span>Mehrarbeitsabrechnung · Teil der <a href="https://schulsoftware-ki.github.io/">Kostenlosen Schulsoftware</a></span>
+    <span><a href="https://schulsoftware-ki.github.io/#kontakt">Kontakt</a> · <a href="https://github.com/schulsoftware-KI/Mehrarbeitsabrechnung-LBV-Formular">Projekt auf GitHub</a></span>
+  </div>
+</footer>
+
+<!-- Besucherzählung (GoatCounter) -->
+<script data-goatcounter="https://stundenplan.goatcounter.com/count"
+        async src="//gc.zgo.at/count.js"></script>
+
+</body>
+</html>
