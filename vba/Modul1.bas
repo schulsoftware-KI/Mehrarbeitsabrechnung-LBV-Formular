@@ -50,6 +50,87 @@ Public Function SpaltePDF() As Integer
 End Function
 
 ' ================================================================
+'  HILFSFUNKTIONEN: Korrektur der Vertretungen
+'  Spalten "Korrektur" und "Korrekturhinweis" der Uebersicht.
+'  Die Zahl in "Korrektur" wird zu den Vertretungen addiert, also
+'      Anzahl abrechenbare Vertretungen = Summenwert + Korrektur
+'  Das gilt fuer "PDF - Nur Abrechnungsfaehige", die Mehrarbeits-
+'  uebersicht (Einzel- und Sammel-PDF) und das LBV-Formular.
+'  Die Spalten "zu zaehlende Vertretungen" (frueher "Vertretungen") und
+'  "Summenwert" behalten den Wert aus
+'  Tabelle1; die Korrektur wird jeweils aktuell dazugerechnet, d.h.
+'  eine nachtraeglich geaenderte Korrektur wirkt ohne neues Einlesen.
+'  Leer = 0, negative Werte (Abzug) sind erlaubt.
+' ================================================================
+Private Function ZelleHatInhalt(ByVal v As Variant) As Boolean
+    If IsError(v) Then ZelleHatInhalt = True: Exit Function
+    ZelleHatInhalt = (Trim(CStr(v)) <> "")
+End Function
+
+' Korrekturwert einer Zeile (leer, keine Zahl oder Spalte fehlt = 0)
+Private Function KorrekturWert(ws3 As Worksheet, ByVal r As Long, ByVal colKorr As Integer) As Double
+    KorrekturWert = 0
+    If colKorr = 0 Then Exit Function
+    Dim v As Variant
+    v = ws3.Cells(r, colKorr).Value
+    If IsError(v) Then Exit Function
+    If Trim(CStr(v)) = "" Then Exit Function
+    If IsNumeric(v) Then KorrekturWert = CDbl(v)
+End Function
+
+' Korrekturhinweis einer Zeile ("" wenn leer oder Spalte fehlt)
+Private Function KorrekturHinweis(ws3 As Worksheet, ByVal r As Long, ByVal colHinweis As Integer) As String
+    KorrekturHinweis = ""
+    If colHinweis = 0 Then Exit Function
+    Dim v As Variant
+    v = ws3.Cells(r, colHinweis).Value
+    If IsError(v) Then Exit Function
+    KorrekturHinweis = Trim(CStr(v))
+End Function
+
+' Prueft, ob in Spalte "Korrektur" nur Zahlen stehen.
+'   colPDF > 0: nur Lehrer mit "PDF erstellen" = 1, sonst alle Lehrer
+'   False: Meldung wurde angezeigt, aufrufendes Makro bricht ab
+Private Function KorrekturPruefen(ws3 As Worksheet, ByVal colKorr As Integer, _
+                                  ByVal colPDF As Integer, ByVal lastRow As Long) As Boolean
+    KorrekturPruefen = True
+    If colKorr = 0 Then Exit Function
+    Dim r As Long, v As Variant, liste As String
+    liste = ""
+    For r = 2 To lastRow
+        If Trim(CStr(ws3.Cells(r, 1).Value)) <> "" Then
+            Dim pruefen As Boolean: pruefen = True
+            If colPDF > 0 Then pruefen = (ws3.Cells(r, colPDF).Value = 1)
+            If pruefen Then
+                v = ws3.Cells(r, colKorr).Value
+                If IsError(v) Then
+                    liste = liste & "  " & Trim(CStr(ws3.Cells(r, 1).Value)) & ":  (Fehlerwert)" & Chr(10)
+                ElseIf Trim(CStr(v)) <> "" Then
+                    If Not IsNumeric(v) Then
+                        liste = liste & "  " & Trim(CStr(ws3.Cells(r, 1).Value)) & ":  " & Trim(CStr(v)) & Chr(10)
+                    End If
+                End If
+            End If
+        End If
+    Next r
+    If liste = "" Then Exit Function
+    MsgBox "In Spalte 'Korrektur' der " & Chr(220) & "bersicht steht keine Zahl bei:" & Chr(10) & Chr(10) & _
+           liste & Chr(10) & _
+           "Bitte eine Zahl eintragen (z.B. 2 oder -1) oder die Zelle leeren." & Chr(10) & _
+           "Es wurde nichts erstellt.", vbExclamation, "Korrektur"
+    KorrekturPruefen = False
+End Function
+
+' Zahl ohne unnoetige Nachkommastellen, z.B. 3 / -2 / 1,5
+Private Function ZahlText(ByVal x As Double) As String
+    If x = Fix(x) Then
+        ZahlText = CStr(CLng(x))
+    Else
+        ZahlText = Format(x, "0.0#")
+    End If
+End Function
+
+' ================================================================
 '  HILFSMAKRO 1: Alle Lehrer auf PDF=1 setzen
 ' ================================================================
 Sub PDFAlleMarkieren()
@@ -82,9 +163,12 @@ Sub PDFNurAbrechnungsfaehige()
     colBagatell = SpalteUebersicht(wsUe, "Bagatellgrenze")
     Dim colPersNr As Integer
     colPersNr = SpalteUebersicht(wsUe, "Pers.Nr")
+    Dim colKorr As Integer
+    colKorr = SpalteUebersicht(wsUe, "Korrektur")
 
     Dim lastRow As Long
     lastRow = wsUe.Cells(wsUe.Rows.Count, "A").End(xlUp).Row
+    If Not KorrekturPruefen(wsUe, colKorr, 0, lastRow) Then Exit Sub
     Dim r As Long
     For r = 2 To lastRow
         If Trim(wsUe.Cells(r, 1).Value) <> "" Then
@@ -94,6 +178,8 @@ Sub PDFNurAbrechnungsfaehige()
             If colSumme > 0 And IsNumeric(wsUe.Cells(r, colSumme).Value) Then
                 summe = CDbl(wsUe.Cells(r, colSumme).Value)
             End If
+            ' Korrektur zu den Vertretungen addieren
+            summe = summe + KorrekturWert(wsUe, r, colKorr)
             If colBagatell > 0 And IsNumeric(wsUe.Cells(r, colBagatell).Value) Then
                 bagatell = CDbl(wsUe.Cells(r, colBagatell).Value)
             End If
@@ -273,6 +359,38 @@ Sub SummenInTabelleUebersicht()
     Set ws3 = ThisWorkbook.Sheets(Chr(220) & "bersicht")
     lastRow3 = ws3.Cells(ws3.Rows.Count, "A").End(xlUp).Row
 
+    ' Korrektur und Korrekturhinweis werden von Hand eingetragen und beim
+    ' Einlesen nicht ueberschrieben. Stehen dort noch Eintraege (z.B. aus dem
+    ' Vormonat), nachfragen - sonst wuerden sie erneut abgerechnet.
+    Dim colKorr As Integer:  colKorr = SpalteUebersicht(ws3, "Korrektur")
+    Dim colKorrH As Integer: colKorrH = SpalteUebersicht(ws3, "Korrekturhinweis")
+    If (colKorr > 0 Or colKorrH > 0) And lastRow3 > 1 Then
+        Dim anzKorr As Long: anzKorr = 0
+        Dim rk As Long
+        For rk = 2 To lastRow3
+            Dim hatKorr As Boolean: hatKorr = False
+            If colKorr > 0 Then hatKorr = ZelleHatInhalt(ws3.Cells(rk, colKorr).Value)
+            If colKorrH > 0 And Not hatKorr Then hatKorr = ZelleHatInhalt(ws3.Cells(rk, colKorrH).Value)
+            If hatKorr Then anzKorr = anzKorr + 1
+        Next rk
+        If anzKorr > 0 Then
+            Dim antwortK As VbMsgBoxResult
+            antwortK = MsgBox("In den Spalten 'Korrektur' / 'Korrekturhinweis' stehen noch Eintr" & Chr(228) & "ge bei " & _
+                anzKorr & " Lehrer(n)." & Chr(10) & Chr(10) & _
+                "Die Korrektur wird zu den Vertretungen addiert. Stammen die Eintr" & Chr(228) & "ge aus einem " & _
+                "fr" & Chr(252) & "heren Monat, w" & Chr(252) & "rden sie noch einmal abgerechnet." & Chr(10) & Chr(10) & _
+                "[Ja]" & Chr(9) & "Korrekturen behalten (gelten f" & Chr(252) & "r den eingelesenen Monat)" & Chr(10) & _
+                "[Nein]" & Chr(9) & "Korrekturen und Hinweise l" & Chr(246) & "schen" & Chr(10) & _
+                "[Abbrechen]" & Chr(9) & "nichts einlesen", _
+                vbYesNoCancel + vbQuestion, "Summen einlesen")
+            If antwortK = vbCancel Then Exit Sub
+            If antwortK = vbNo Then
+                If colKorr > 0 Then ws3.Range(ws3.Cells(2, colKorr), ws3.Cells(lastRow3, colKorr)).ClearContents
+                If colKorrH > 0 Then ws3.Range(ws3.Cells(2, colKorrH), ws3.Cells(lastRow3, colKorrH)).ClearContents
+            End If
+        End If
+    End If
+
     Dim colSumme As Integer, colEntfG As Integer, colEntfN As Integer
     Dim colVert As Integer, colVertN As Integer
     colSumme = 0: colEntfG = 0: colEntfN = 0: colVert = 0: colVertN = 0
@@ -284,7 +402,7 @@ Sub SummenInTabelleUebersicht()
             Case "Summenwert":                                                 colSumme = c
             Case "Entf" & Chr(228) & "lle gesamt":                            colEntfG = c
             Case "nicht zu z" & Chr(228) & "hlende Entf" & Chr(228) & "lle": colEntfN = c
-            Case "Vertretungen":                                               colVert = c
+            Case "zu z" & Chr(228) & "hlende Vertretungen", "Vertretungen":    If colVert = 0 Then colVert = c
             Case "nicht zu z" & Chr(228) & "hlende Vertretungen":             colVertN = c
         End Select
     Next c
@@ -292,7 +410,7 @@ Sub SummenInTabelleUebersicht()
     If colSumme = 0 Then lastColUe = lastColUe + 1: colSumme = lastColUe: ws3.Cells(1, colSumme).Value = "Summenwert"
     If colEntfG = 0 Then lastColUe = lastColUe + 1: colEntfG = lastColUe: ws3.Cells(1, colEntfG).Value = "Entf" & Chr(228) & "lle gesamt"
     If colEntfN = 0 Then lastColUe = lastColUe + 1: colEntfN = lastColUe: ws3.Cells(1, colEntfN).Value = "nicht zu z" & Chr(228) & "hlende Entf" & Chr(228) & "lle"
-    If colVert = 0 Then lastColUe = lastColUe + 1: colVert = lastColUe: ws3.Cells(1, colVert).Value = "Vertretungen"
+    If colVert = 0 Then lastColUe = lastColUe + 1: colVert = lastColUe: ws3.Cells(1, colVert).Value = "zu z" & Chr(228) & "hlende Vertretungen"
     If colVertN = 0 Then lastColUe = lastColUe + 1: colVertN = lastColUe: ws3.Cells(1, colVertN).Value = "nicht zu z" & Chr(228) & "hlende Vertretungen"
 
     ws3.Rows(1).Font.Bold = True
@@ -426,11 +544,16 @@ Sub PDFErstellen()
     colSumme = SpalteUebersicht(wsUe, "Summenwert")
     colEntfG = SpalteUebersicht(wsUe, "Entf" & Chr(228) & "lle gesamt")
     colEntfN = SpalteUebersicht(wsUe, "nicht zu z" & Chr(228) & "hlende Entf" & Chr(228) & "lle")
-    colVert = SpalteUebersicht(wsUe, "Vertretungen")
+    ' Spalte heisst jetzt "zu zaehlende Vertretungen" (alter Name wird weiter erkannt)
+    colVert = SpalteUebersicht(wsUe, "zu z" & Chr(228) & "hlende Vertretungen")
+    If colVert = 0 Then colVert = SpalteUebersicht(wsUe, "Vertretungen")
     colVertN = SpalteUebersicht(wsUe, "nicht zu z" & Chr(228) & "hlende Vertretungen")
     colBagatell = SpalteUebersicht(wsUe, "Bagatellgrenze")
     Dim colPersNr As Integer
     colPersNr = SpalteUebersicht(wsUe, "Pers.Nr")
+    Dim colKorr As Integer, colKorrH As Integer
+    colKorr = SpalteUebersicht(wsUe, "Korrektur")
+    colKorrH = SpalteUebersicht(wsUe, "Korrekturhinweis")
 
     Dim lastRowUe As Long
     lastRowUe = wsUe.Cells(wsUe.Rows.Count, "A").End(xlUp).Row
@@ -443,6 +566,7 @@ Sub PDFErstellen()
     If anzahlMarkiert = 0 Then
         MsgBox "Keine Lehrer markiert.", vbExclamation: Exit Sub
     End If
+    If Not KorrekturPruefen(wsUe, colKorr, colPDF, lastRowUe) Then Exit Sub
 
     Dim speicherOrdner As String
     With Application.FileDialog(msoFileDialogFolderPicker)
@@ -527,9 +651,12 @@ Sub PDFErstellen()
         If colEntfN > 0 And IsNumeric(wsUe.Cells(r, colEntfN).Value) Then entfNicht = CLng(wsUe.Cells(r, colEntfN).Value)
         If colVert > 0 And IsNumeric(wsUe.Cells(r, colVert).Value) Then vertWert = CLng(wsUe.Cells(r, colVert).Value)
         If colVertN > 0 And IsNumeric(wsUe.Cells(r, colVertN).Value) Then vertNicht = CLng(wsUe.Cells(r, colVertN).Value)
+        Dim korrWert As Double:    korrWert = KorrekturWert(wsUe, r, colKorr)
+        Dim korrHinweis As String: korrHinweis = KorrekturHinweis(wsUe, r, colKorrH)
 
         Call ErstellePDF(speicherOrdner, kuerzel, vollname, persNr, zeitbereich, jahreszahl, _
-            detailZeilen, anzDetail, summeWert, entfGesamt, entfNicht, vertWert, vertNicht, bagatell)
+            detailZeilen, anzDetail, summeWert, entfGesamt, entfNicht, vertWert, vertNicht, bagatell, _
+            korrWert, korrHinweis)
         pdfErstellt = pdfErstellt + 1
 
         ' Blatt fuer Sammel-PDF merken (wird nach der Schleife zusammengefuehrt)
@@ -542,7 +669,8 @@ NaechsterLehrer:
     ' Sammel-PDF aus allen erstellten Einzelblaettern erzeugen
     If pdfErstellt > 1 Then
         Call ErstelleSammelPDF(speicherOrdner, sammelBlaetter, pdfErstellt, jahreszahl, zeitbereich, _
-            ws1, wsUe, colSumme, colBagatell, colEntfG, colEntfN, colVert, colVertN, colPersNr, lastRowUe, lastRow1)
+            ws1, wsUe, colSumme, colBagatell, colEntfG, colEntfN, colVert, colVertN, colPersNr, lastRowUe, lastRow1, _
+            colKorr, colKorrH)
     End If
 
     MsgBox pdfErstellt & " PDF(s) erstellt in:" & Chr(10) & speicherOrdner, vbInformation
@@ -550,11 +678,14 @@ End Sub
 
 ' ================================================================
 '  PDF eines Lehrers erstellen
+'  summeWert = Summenwert aus der Uebersicht (ohne Korrektur),
+'  korrWert/korrHinweis = Spalten Korrektur/Korrekturhinweis
 ' ================================================================
 Private Sub ErstellePDF(ordner As String, kuerzel As String, vollname As String, _
     persNr As String, zeitbereich As String, jahreszahl As String, detailZeilen() As String, anzDetail As Integer, _
     summeWert As Double, entfGesamt As Long, entfNicht As Long, _
-    vertWert As Long, vertNicht As Long, bagatell As Double)
+    vertWert As Long, vertNicht As Long, bagatell As Double, _
+    korrWert As Double, korrHinweis As String)
 
     Application.DisplayAlerts = False
     Dim ws As Worksheet
@@ -627,42 +758,11 @@ Private Sub ErstellePDF(ordner As String, kuerzel As String, vollname As String,
     wsTmp.Range(wsTmp.Cells(z - 1, tabelleStartSpalte), wsTmp.Cells(z - 1, tabelleStartSpalte + 8)).Borders(xlEdgeBottom).LineStyle = xlContinuous
     z = z + 1
 
-    ' Kennzahlen
-    Dim bagatellText As String
-    bagatellText = IIf(bagatell > 0, Format(bagatell, "0.00"), "k.A.")
-    wsTmp.Cells(z, 1).Value = "Bagatellgrenze:  " & bagatellText
-    z = z + 1
-    wsTmp.Cells(z, 1).Value = "Entf" & Chr(228) & "lle gesamt:  " & entfGesamt & _
-        "          nicht zu z" & Chr(228) & "hlende Entf" & Chr(228) & "lle:  " & entfNicht
-    z = z + 1
-    wsTmp.Cells(z, 1).Value = "Vertretungen:  " & vertWert & _
-        "          nicht zu z" & Chr(228) & "hlende Vertretungen:  " & vertNicht
-    z = z + 1
-    With wsTmp.Cells(z, 1)
-        .Value = "Anzahl abrechenbare Vertretungen:  " & summeWert
-        .Font.Bold = True
-        If bagatell > 0 And summeWert > bagatell Then .Font.Color = RGB(0, 128, 0)
-    End With
-    z = z + 1
-
-    ' Abstand vor "Zur Kenntnis genommen"
-    z = z + 4
-
-    ' Zur Kenntnis genommen
-    wsTmp.Cells(z, 1).Value = "Zur Kenntnis genommen:": wsTmp.Cells(z, 1).Font.Bold = True
-    z = z + 1
-
-    ' Abstand nach "Zur Kenntnis genommen" (Unterschrift-Zeilen)
-    z = z + 4
-
-    ' Unterschriftszeilen
-    wsTmp.Cells(z, 1).Value = "________________________________"
-    wsTmp.Cells(z, 9).Value = "________________________________"
-    wsTmp.Cells(z, 9).HorizontalAlignment = xlRight
-    z = z + 1
-    wsTmp.Cells(z, 1).Value = "Datum / Unterschrift Lehrkraft"
-    wsTmp.Cells(z, 9).Value = "Datum / Unterschrift Schulleitung"
-    wsTmp.Cells(z, 9).HorizontalAlignment = xlRight
+    ' Kennzahlen inkl. Korrektur
+    ' ("Zur Kenntnis genommen" und Unterschriftsfelder entfallen)
+    Dim hinweisZeile As Long
+    z = SchreibeKennzahlen(wsTmp, z, bagatell, entfGesamt, entfNicht, vertWert, vertNicht, _
+                           summeWert, korrWert, korrHinweis, hinweisZeile)
 
     ' --- Spaltenbreiten ---
     ' AutoFit fuer alle Spalten
@@ -679,8 +779,8 @@ Private Sub ErstellePDF(ordner As String, kuerzel As String, vollname As String,
     ' Ausschluss-Prefixe fuer Nicht-Datenwerte in Spalte 1
     Dim skip(8) As String
     skip(0) = "Mehr": skip(1) = "Von": skip(2) = "Bag": skip(3) = "Entf"
-    skip(4) = "Vert": skip(5) = "Anz":  skip(6) = "Zur": skip(7) = "Dat"
-    skip(8) = "___"
+    skip(4) = "Vert": skip(5) = "Anz":  skip(6) = "Korr": skip(7) = "erf"
+    skip(8) = "zu z"
 
     For zRow = tabelleStartZeile To z
         Dim datumVal   As String: datumVal = CStr(wsTmp.Cells(zRow, 1).Value)
@@ -726,6 +826,10 @@ Private Sub ErstellePDF(ordner As String, kuerzel As String, vollname As String,
     wsTmp.Columns(2).ColumnWidth = maxBreiteStunde / 6
     wsTmp.Columns(5).ColumnWidth = maxBreiteZaehler / 6
 
+    ' Zeilenhoehe des Korrekturhinweises (verbundene Zelle) erst jetzt,
+    ' wenn die Spaltenbreiten feststehen
+    HinweisZeileAnpassen wsTmp, hinweisZeile
+
     ' Seiteneinrichtung: Hochformat mit automatischem Zeilenumbruch
     With wsTmp.PageSetup
         .Orientation = xlPortrait
@@ -767,6 +871,92 @@ Private Sub ErstellePDF(ordner As String, kuerzel As String, vollname As String,
     Application.DisplayAlerts = False
     wsTmp.Delete
     Application.DisplayAlerts = True
+End Sub
+
+' ================================================================
+'  Kennzahlen der Mehrarbeitsuebersicht (Einzel- und Sammel-PDF)
+'  Schreibt ab Zeile z in Spalte A und gibt die naechste freie Zeile zurueck.
+'  Die Korrektur wird zu den Vertretungen addiert:
+'      Anzahl abrechenbare Vertretungen = Summenwert + Korrektur
+'  Die Zeilen "Korrektur Vertretungen" und "Korrekturhinweis" erscheinen
+'  nur, wenn eine Korrektur bzw. ein Hinweis eingetragen ist.
+'  hinweisZeile (Rueckgabe): Zeile des Korrekturhinweises, 0 = keiner
+' ================================================================
+Private Function SchreibeKennzahlen(ws As Worksheet, ByVal z As Long, _
+    ByVal bagatell As Double, ByVal entfGesamt As Long, ByVal entfNicht As Long, _
+    ByVal vertWert As Long, ByVal vertNicht As Long, ByVal summeWert As Double, _
+    ByVal korrWert As Double, ByVal korrHinweis As String, ByRef hinweisZeile As Long) As Long
+
+    hinweisZeile = 0
+
+    Dim bagatellText As String
+    bagatellText = IIf(bagatell > 0, Format(bagatell, "0.00"), "k.A.")
+    ws.Cells(z, 1).Value = "Bagatellgrenze:  " & bagatellText
+    z = z + 1
+    ws.Cells(z, 1).Value = "Entf" & Chr(228) & "lle gesamt:  " & entfGesamt & _
+        "          nicht zu z" & Chr(228) & "hlende Entf" & Chr(228) & "lle:  " & entfNicht
+    z = z + 1
+    ws.Cells(z, 1).Value = "zu z" & Chr(228) & "hlende Vertretungen:  " & vertWert & _
+        "          nicht zu z" & Chr(228) & "hlende Vertretungen:  " & vertNicht
+    z = z + 1
+    ' "erfasste Vertretungen" = unkorrigierter Summenwert aus der Uebersicht
+    ws.Cells(z, 1).Value = "erfasste Vertretungen:  " & ZahlText(summeWert)
+    z = z + 1
+
+    ' Korrektur (wird zu den Vertretungen addiert) und Hinweis
+    If korrWert <> 0 Or korrHinweis <> "" Then
+        ws.Cells(z, 1).Value = "Korrektur Vertretungen:  " & IIf(korrWert > 0, "+", "") & ZahlText(korrWert)
+        z = z + 1
+        If korrHinweis <> "" Then
+            ' Ueber die ganze Tabellenbreite, mit Zeilenumbruch bei langem Text
+            With ws.Range(ws.Cells(z, 1), ws.Cells(z, 9))
+                .Merge
+                .HorizontalAlignment = xlLeft
+                .VerticalAlignment = xlTop
+                .WrapText = True
+            End With
+            ws.Cells(z, 1).Value = "Korrekturhinweis:  " & korrHinweis
+            hinweisZeile = z
+            z = z + 1
+        End If
+    End If
+
+    Dim abrechenbar As Double
+    abrechenbar = summeWert + korrWert
+    With ws.Cells(z, 1)
+        .Value = "Anzahl abrechenbare Vertretungen:  " & ZahlText(abrechenbar) & _
+                 IIf(korrWert <> 0, "   (inkl. Korrektur)", "")
+        .Font.Bold = True
+        If bagatell > 0 And abrechenbar > bagatell Then .Font.Color = RGB(0, 128, 0)
+    End With
+    z = z + 1
+
+    SchreibeKennzahlen = z
+End Function
+
+' ----------------------------------------------------------------
+' Zeilenhoehe der verbundenen Zeile mit dem Korrekturhinweis setzen
+' (Excel passt verbundene Zellen nicht selbst an). Grobe Schaetzung:
+' ein Zeichen je Einheit Spaltenbreite. Erst aufrufen, wenn die
+' Spaltenbreiten feststehen. zeile <= 0: nichts zu tun.
+' ----------------------------------------------------------------
+Private Sub HinweisZeileAnpassen(ws As Worksheet, ByVal zeile As Long)
+    If zeile <= 0 Then Exit Sub
+    Dim breite As Double, c As Integer
+    breite = 0
+    For c = 1 To 9
+        breite = breite + ws.Columns(c).ColumnWidth
+    Next c
+    If breite < 20 Then breite = 20
+    Dim teile() As String, t As Long, anz As Long
+    teile = Split(Replace(CStr(ws.Cells(zeile, 1).Value), Chr(13), ""), Chr(10))
+    anz = 0
+    For t = 0 To UBound(teile)
+        anz = anz + Int(Len(teile(t)) / breite) + 1
+    Next t
+    If anz < 1 Then anz = 1
+    If anz > 30 Then anz = 30
+    ws.Rows(zeile).RowHeight = 13 * anz
 End Sub
 
 ' ================================================================
@@ -994,7 +1184,8 @@ Private Sub ErstelleSammelPDF(ordner As String, sammelK() As String, anzahl As I
     jahreszahl As String, zeitbereich As String, ws1 As Worksheet, wsUe As Worksheet, _
     colSumme As Integer, colBagatell As Integer, colEntfG As Integer, _
     colEntfN As Integer, colVert As Integer, colVertN As Integer, _
-    colPersNr As Integer, lastRowUe As Long, lastRow1 As Long)
+    colPersNr As Integer, lastRowUe As Long, lastRow1 As Long, _
+    colKorr As Integer, colKorrH As Integer)
 
     ' Temporaeres Sammelblatt anlegen
     Application.DisplayAlerts = False
@@ -1012,6 +1203,10 @@ Private Sub ErstelleSammelPDF(ordner As String, sammelK() As String, anzahl As I
 
     Dim sammelZeile As Long: sammelZeile = 1
     Dim idx As Integer
+    ' Zeilen mit Korrekturhinweis (Hoehe wird am Ende angepasst)
+    Dim hinweisZeilen() As Long
+    Dim anzHinweise As Long: anzHinweise = 0
+    ReDim hinweisZeilen(0)
 
     For idx = 0 To anzahl - 1
         Dim kuerzel As String: kuerzel = sammelK(idx)
@@ -1071,9 +1266,13 @@ Private Sub ErstelleSammelPDF(ordner As String, sammelK() As String, anzahl As I
         ' Werte aus Uebersicht
         Dim summeWert As Double, entfGesamt As Long, entfNicht As Long
         Dim vertWert As Long, vertNicht As Long, bagatell As Double
+        Dim korrWert As Double:    korrWert = 0
+        Dim korrHinweis As String: korrHinweis = ""
         Dim ueZ As Long
         For ueZ = 2 To lastRowUe
             If LCase(Trim(wsUe.Cells(ueZ, 1).Value)) = LCase(kuerzel) Then
+                korrWert = KorrekturWert(wsUe, ueZ, colKorr)
+                korrHinweis = KorrekturHinweis(wsUe, ueZ, colKorrH)
                 If colSumme > 0 And IsNumeric(wsUe.Cells(ueZ, colSumme).Value) Then summeWert = CDbl(wsUe.Cells(ueZ, colSumme).Value)
                 If colBagatell > 0 And IsNumeric(wsUe.Cells(ueZ, colBagatell).Value) Then bagatell = CDbl(wsUe.Cells(ueZ, colBagatell).Value)
                 If colEntfG > 0 And IsNumeric(wsUe.Cells(ueZ, colEntfG).Value) Then entfGesamt = CLng(wsUe.Cells(ueZ, colEntfG).Value)
@@ -1144,37 +1343,17 @@ Private Sub ErstelleSammelPDF(ordner As String, sammelK() As String, anzahl As I
         wsSammel.Range(wsSammel.Cells(sammelZeile - 1, 1), wsSammel.Cells(sammelZeile - 1, 9)).Borders(xlEdgeBottom).LineStyle = xlContinuous
         sammelZeile = sammelZeile + 1
 
-        ' Kennzahlen
-        Dim bagatellText As String
-        bagatellText = IIf(bagatell > 0, Format(bagatell, "0.00"), "k.A.")
-        wsSammel.Cells(sammelZeile, 1).Value = "Bagatellgrenze:  " & bagatellText
+        ' Kennzahlen inkl. Korrektur
+        ' ("Zur Kenntnis genommen" und Unterschriftsfelder entfallen)
+        Dim hinweisZeile As Long
+        sammelZeile = SchreibeKennzahlen(wsSammel, sammelZeile, bagatell, entfGesamt, entfNicht, _
+                                         vertWert, vertNicht, summeWert, korrWert, korrHinweis, hinweisZeile)
+        If hinweisZeile > 0 Then
+            ReDim Preserve hinweisZeilen(anzHinweise)
+            hinweisZeilen(anzHinweise) = hinweisZeile
+            anzHinweise = anzHinweise + 1
+        End If
         sammelZeile = sammelZeile + 1
-        wsSammel.Cells(sammelZeile, 1).Value = "Entf" & Chr(228) & "lle gesamt:  " & entfGesamt & _
-            "          nicht zu z" & Chr(228) & "hlende Entf" & Chr(228) & "lle:  " & entfNicht
-        sammelZeile = sammelZeile + 1
-        wsSammel.Cells(sammelZeile, 1).Value = "Vertretungen:  " & vertWert & _
-            "          nicht zu z" & Chr(228) & "hlende Vertretungen:  " & vertNicht
-        sammelZeile = sammelZeile + 1
-        With wsSammel.Cells(sammelZeile, 1)
-            .Value = "Anzahl abrechenbare Vertretungen:  " & summeWert
-            .Font.Bold = True
-            If bagatell > 0 And summeWert > bagatell Then .Font.Color = RGB(0, 128, 0)
-        End With
-        sammelZeile = sammelZeile + 1
-        sammelZeile = sammelZeile + 4
-
-        ' Unterschrift
-        wsSammel.Cells(sammelZeile, 1).Value = "Zur Kenntnis genommen:"
-        wsSammel.Cells(sammelZeile, 1).Font.Bold = True
-        sammelZeile = sammelZeile + 5
-        wsSammel.Cells(sammelZeile, 1).Value = "________________________________"
-        wsSammel.Cells(sammelZeile, 9).Value = "________________________________"
-        wsSammel.Cells(sammelZeile, 9).HorizontalAlignment = xlRight
-        sammelZeile = sammelZeile + 1
-        wsSammel.Cells(sammelZeile, 1).Value = "Datum / Unterschrift Lehrkraft"
-        wsSammel.Cells(sammelZeile, 9).Value = "Datum / Unterschrift Schulleitung"
-        wsSammel.Cells(sammelZeile, 9).HorizontalAlignment = xlRight
-        sammelZeile = sammelZeile + 2
 
     Next idx
 
@@ -1183,6 +1362,12 @@ Private Sub ErstelleSammelPDF(ordner As String, sammelK() As String, anzahl As I
     wsSammel.Columns(1).ColumnWidth = 7
     wsSammel.Columns(2).ColumnWidth = 7
     wsSammel.Columns(5).ColumnWidth = 5
+
+    ' Zeilenhoehe der Korrekturhinweise (verbundene Zellen)
+    Dim hz As Long
+    For hz = 0 To anzHinweise - 1
+        HinweisZeileAnpassen wsSammel, hinweisZeilen(hz)
+    Next hz
 
     ' Seiteneinrichtung
     With wsSammel.PageSetup
@@ -1307,6 +1492,7 @@ Sub LBVFormularErstellen()
     Dim colStatus   As Integer: colStatus = SpalteUebersicht(wsUe, "Status")
     Dim colGeburt   As Integer: colGeburt = SpalteUebersicht(wsUe, "Geburtsdatum")
     Dim colAktzeich As Integer: colAktzeich = SpalteUebersicht(wsUe, "Aktenzeichen")
+    Dim colKorr     As Integer: colKorr = SpalteUebersicht(wsUe, "Korrektur")
 
     Dim lastRowUe As Long
     lastRowUe = wsUe.Cells(wsUe.Rows.Count, "A").End(xlUp).Row
@@ -1319,6 +1505,7 @@ Sub LBVFormularErstellen()
     If anzahlMarkiert = 0 Then
         MsgBox "Keine Lehrer markiert.", vbExclamation: Exit Sub
     End If
+    If Not KorrekturPruefen(wsUe, colKorr, colPDF, lastRowUe) Then Exit Sub
 
     ' Vorlagepfad aus Tabelle Informationen
     Dim vorlagePfad As String
@@ -1356,6 +1543,7 @@ Sub LBVFormularErstellen()
     lastRow1 = ws1.Cells(ws1.Rows.Count, "A").End(xlUp).Row
     Dim erstellt As Integer: erstellt = 0
     Dim fehlerListe As String: fehlerListe = ""
+    Dim ohneStunden As String: ohneStunden = ""   ' Lehrer mit weniger als 1 abrechenbaren Vertretung
 
     For r = 2 To lastRowUe
         If wsUe.Cells(r, colPDF).Value <> 1 Then GoTo NaechsterLehrerLBV
@@ -1386,6 +1574,14 @@ Sub LBVFormularErstellen()
         If colSumme > 0 Then
             Dim summeRaw As String: summeRaw = Trim(CStr(wsUe.Cells(r, colSumme).Value))
             If IsNumeric(summeRaw) Then summeL = CDbl(summeRaw)
+        End If
+        ' Korrektur zu den Vertretungen addieren -> Stundenzahl im LBV-Formular
+        summeL = summeL + KorrekturWert(wsUe, r, colKorr)
+        ' Formular nur mit mindestens 1 abrechenbaren Stunde
+        ' (sonst stuende z.B. "0-2" bzw. "000" im Feld A)
+        If CLng(summeL) < 1 Then
+            ohneStunden = ohneStunden & IIf(ohneStunden = "", "", ", ") & kuerzel & " (" & ZahlText(summeL) & ")"
+            GoTo NaechsterLehrerLBV
         End If
         ' Sollstunden fuer Merkmal A (Teilzeit < 25.5 Std)
         Dim sollL As Double: sollL = 0
@@ -1627,11 +1823,16 @@ Sub LBVFormularErstellen()
 NaechsterLehrerLBV:
     Next r
 
-    If fehlerListe = "" Then
-        MsgBox erstellt & " LBV-Formular(e) erstellt in:" & Chr(10) & speicherOrdner, vbInformation
-    Else
-        MsgBox erstellt & " erstellt. Fehler bei:" & Chr(10) & fehlerListe, vbExclamation
+    Dim meldungLBV As String
+    meldungLBV = erstellt & " LBV-Formular(e) erstellt in:" & Chr(10) & speicherOrdner
+    If ohneStunden <> "" Then
+        meldungLBV = meldungLBV & Chr(10) & Chr(10) & _
+                     "Kein Formular, da abrechenbare Vertretungen inkl. Korrektur unter 1:" & Chr(10) & ohneStunden
     End If
+    If fehlerListe <> "" Then
+        meldungLBV = meldungLBV & Chr(10) & Chr(10) & "Fehler bei:" & Chr(10) & fehlerListe
+    End If
+    MsgBox meldungLBV, IIf(fehlerListe = "", vbInformation, vbExclamation)
 End Sub
 
 ' Hilfsfunktion: Umlaute fuer Dateinamen ersetzen

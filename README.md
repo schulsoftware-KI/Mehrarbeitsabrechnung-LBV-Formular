@@ -7,6 +7,7 @@ Excel-Makro mit Python-Hilfsprogrammen, das aus dem Untis-Export „Vertretungen
 ## Was das Tool kann
 
 - Untis-Export in die Excel-Datei importieren und je Lehrkraft Summen bilden (Entfälle, Vertretungen, Bagatellgrenze)
+- Vertretungen je Lehrkraft von Hand korrigieren (Spalten „Korrektur“ und „Korrekturhinweis“ der Übersicht). Die Korrektur zählt bei der Auswahl, in der Abrechnungs-PDF und im LBV-Formular mit
 - Einzel-PDFs und Sammel-PDF der Abrechnung erstellen
 - LBV-Formulare mit Barcode je Lehrkraft ausfüllen (`lbv_fill`)
 - Mehrere Monatsformulare je Lehrkraft zu einem Gesamtformular vereinen (`lbv_merge`)
@@ -53,12 +54,15 @@ Die fertigen **EXE-Dateien** liegen nicht im Repository, sondern unter [Releases
 ## Ablauf (Kurzfassung)
 
 1. In Untis: Berichte → Vertretungsplanung → Vertretungsabrechnung, Datumsbereich des Abrechnungsmonats wählen, als Excel exportieren.
-2. In der Arbeitsmappe **„Tabelle1 importieren“**, danach in der Übersicht **„Summen einlesen“**.
-3. In der Spalte „PDF erstellen“ Lehrkräfte markieren (0/1 oder per Doppelklick).
-4. **„PDFs erstellen“** bzw. **„LBV-Formular erstellen“** klicken.
-5. Bei mehreren Monaten **„Merge LBV“**: erstellt je Lehrkraft `LBV_Mehrarbeit_<Kürzel>_Gesamt.pdf` und bietet danach direkt die Sammeldatei aller Gesamtformulare an.
-6. **„LBV-Sammeldatei“**: fasst wahlweise alle Einzel- oder alle Gesamtformulare eines Ordners zu einer PDF zusammen. Die Formularfelder werden dabei fest in die Seiten übernommen, damit jede Seite die richtigen Werte zeigt.
-7. **„PDFs drucken“**: druckt alle PDFs eines Ordners. Die E-Mail-Makros (`MehrarbeitPDFsVersenden` für Outlook, `MehrarbeitPDFsVersendenSMTP` für SMTP) starten Sie mit Alt+F8.
+2. In der Arbeitsmappe **„Tabelle1 importieren“**, danach in der Übersicht **„Summen einlesen“**. Stehen in „Korrektur“ oder „Korrekturhinweis“ noch Einträge, z. B. aus dem Vormonat, fragt das Makro, ob sie bleiben oder gelöscht werden.
+3. Bei Bedarf korrigieren: In der Spalte **„Korrektur“** eine Zahl eintragen (negativ = Abzug), in **„Korrekturhinweis“** den Grund. Anzahl abrechenbare Vertretungen = Summenwert + Korrektur.
+4. In der Spalte „PDF erstellen“ Lehrkräfte markieren (0/1 oder per Doppelklick).
+5. **„PDFs erstellen“** bzw. **„LBV-Formular erstellen“** klicken. Die Abrechnungs-PDF zeigt zu zählende, nicht zu zählende und erfasste Vertretungen (Summenwert), darunter Korrektur und Hinweis sowie die abrechenbaren Vertretungen inklusive Korrektur. Das LBV-Formular erhält die korrigierte Stundenzahl. Lehrkräfte mit weniger als einer abrechenbaren Vertretung bekommen kein Formular.
+6. Bei mehreren Monaten **„Merge LBV“**: erstellt je Lehrkraft `LBV_Mehrarbeit_<Kürzel>_Gesamt.pdf` und bietet danach direkt die Sammeldatei aller Gesamtformulare an.
+7. **„LBV-Sammeldatei“**: fasst wahlweise alle Einzel- oder alle Gesamtformulare eines Ordners zu einer PDF zusammen. Die Formularfelder werden dabei fest in die Seiten übernommen, damit jede Seite die richtigen Werte zeigt.
+8. **„PDFs drucken“**: druckt alle PDFs eines Ordners. Die E-Mail-Makros (`MehrarbeitPDFsVersenden` für Outlook, `MehrarbeitPDFsVersendenSMTP` für SMTP) starten Sie mit Alt+F8.
+
+> **Ältere Arbeitsmappen:** Die Makros suchen die Spalten der Übersicht über die Kopfzeile. Für die Korrektur in der Übersicht die Spalten „Korrektur“ und „Korrekturhinweis“ anlegen. Die frühere Spalte „Vertretungen“ heißt jetzt „zu zählende Vertretungen“, der alte Name wird weiter erkannt.
 
 Ausführlich: [docs/Kurzanleitung Vertretungsabrechnung.docx](docs).
 
