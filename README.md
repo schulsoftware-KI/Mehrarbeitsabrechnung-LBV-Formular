@@ -35,15 +35,13 @@ Die fertigen **EXE-Dateien** liegen nicht im Repository, sondern unter [Releases
 ## Voraussetzungen
 
 - Windows und Microsoft Excel mit aktivierten Makros
-- Die EXE-Dateien aus dem Release. `lbv_merge` und `lbv_sammel` laufen ersatzweise auch als `.py`-Datei mit Python 3 und  
-  `py -m pip install -r requirements.txt`  
-  (bei der Python-Installation „Add Python to PATH“ ankreuzen). `lbv_fill.exe` und `lbv_email.exe` werden in jedem Fall gebraucht.
+- Die vier EXE-Dateien aus dem Release (`lbv_fill`, `lbv_merge`, `lbv_sammel`, `lbv_email`). **Python wird nicht benötigt**, nur wenn Sie die EXE-Dateien selbst bauen möchten.
 - Die **leere LBV-Vorlage** (PDF) vom Landesamt für Besoldung und Versorgung. Sie ist hier bewusst nicht enthalten. Beziehen Sie die aktuelle Version selbst vom LBV und speichern Sie sie lokal.
 
 ## Einrichtung
 
 1. Beispieldatei herunterladen. **Wichtig:** Rechtsklick auf die Datei → Eigenschaften → Haken bei „Zulassen“ → OK. Sonst blockiert Office die Makros.
-2. `lbv_fill.exe`, `lbv_merge.exe`, `lbv_sammel.exe` und `lbv_email.exe` aus dem Release in einen gemeinsamen Ordner legen (für `lbv_merge` und `lbv_sammel` gehen auch die `.py`-Dateien, wenn Python installiert ist). Optional zum Drucken: die portable Version von [SumatraPDF](https://www.sumatrapdfreader.org) in denselben Ordner entpacken.
+2. `lbv_fill.exe`, `lbv_merge.exe`, `lbv_sammel.exe` und `lbv_email.exe` aus dem Release in einen gemeinsamen Ordner legen, am besten lokal (z. B. `Dokumente\Vertretungsabrechnung\Programme`), und bei jeder Datei unter Eigenschaften „Zulassen“ ankreuzen. Optional zum Drucken: die portable Version von [SumatraPDF](https://www.sumatrapdfreader.org) in denselben Ordner entpacken.
 3. In der Tabelle **Informationen** eintragen: Jahreszahl, Dienststelle, Schulnummer, Bearbeiter, Telefon, Minuten je Unterrichtsstunde, Standardschlüssel, **Pfad und Dateiname der LBV-Vorlage**, **Pfad zu `lbv_fill.exe`** und je nach Bedarf:
    - `Outlook-Absender`: Adresse eines in Outlook eingerichteten Kontos (leer = Outlook-Standardkonto)
    - SMTP-Server, SMTP-Port, Verschlüsselung, Benutzername, Passwort für den Versand ohne Outlook
