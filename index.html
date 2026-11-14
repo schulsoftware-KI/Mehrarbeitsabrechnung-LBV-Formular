@@ -155,6 +155,11 @@
     background:var(--amber-bg);border:1px solid #efd3a3;border-radius:var(--radius);
     padding:14px 18px;font-size:.92rem;color:#6b4a12;margin-top:28px;
   }
+  .callout b{color:#4d340b;}
+
+  /* ── Neu ── */
+  .tag.new{color:var(--green-dark);background:#dcefe3;}
+  .feature.new{border-top:3px solid var(--green);}
 
   /* ── Fuß ── */
   footer{background:var(--navy);color:#c9d6ea;padding:32px 0;font-size:.9rem;}
@@ -211,6 +216,7 @@
     <div class="brand"><span class="mark"></span>Mehrarbeitsabrechnung</div>
     <nav class="topnav">
       <a class="home" href="https://schulsoftware-ki.github.io/">Alle Programme</a>
+      <a href="#neu">Neu</a>
       <a href="#funktionen">Funktionen</a>
       <a href="#einrichtung">Einrichtung</a>
       <a href="#hinweise">Hinweise</a>
@@ -244,18 +250,47 @@
     <div class="plan" aria-hidden="true">
       <div class="board">ÜBERSICHT · ABRECHNUNGSMONAT</div>
       <table class="sheet">
-        <thead><tr><th>Kürzel</th><th>Vertretungen</th><th>Entfälle</th><th>PDF</th></tr></thead>
+        <thead><tr><th>Kürzel</th><th>Vertretungen</th><th>Korrektur</th><th>Entfälle</th><th>PDF</th></tr></thead>
         <tbody>
-          <tr class="on"><td>L1</td><td>9</td><td>2</td><td>1</td></tr>
-          <tr class="on"><td>L2</td><td>6</td><td>0</td><td>1</td></tr>
-          <tr class="off"><td>L3</td><td>1</td><td>1</td><td>0</td></tr>
-          <tr class="on"><td>L4</td><td>7</td><td>3</td><td>1</td></tr>
+          <tr class="on"><td>L1</td><td>9</td><td></td><td>2</td><td>1</td></tr>
+          <tr class="on"><td>L2</td><td>6</td><td>+2</td><td>0</td><td>1</td></tr>
+          <tr class="off"><td>L3</td><td>1</td><td></td><td>1</td><td>0</td></tr>
+          <tr class="on"><td>L4</td><td>7</td><td>−1</td><td>3</td><td>1</td></tr>
         </tbody>
       </table>
       <div class="outputs"><span>LBV-Formulare</span><span>Sammeldatei</span><span>E-Mail</span></div>
     </div>
   </div>
 </div>
+
+<!-- ── Neu ── -->
+<section id="neu">
+  <div class="wrap">
+    <div class="section-head">
+      <div class="eyebrow">Neu · 14. November 2026</div>
+      <h2>Korrekturen und eine klarere Abrechnung</h2>
+      <p>Vertretungen lassen sich jetzt von Hand korrigieren, und die Abrechnungs-PDF zeigt genauer, wie die abrechenbaren Vertretungen zustande kommen.</p>
+    </div>
+    <div class="features">
+      <div class="feature new">
+        <span class="tag new">Korrektur</span>
+        <h3>Vertretungen korrigieren</h3>
+        <p>In der Übersicht gibt es die Spalten „Korrektur“ und „Korrekturhinweis“. Die Zahl wird zu den Vertretungen addiert, ein negativer Wert zieht ab. Die Korrektur zählt bei „Nur Abrechnungsfähige“, in der Abrechnungs-PDF und im LBV-Formular. Stehen beim Einlesen noch Korrekturen aus dem Vormonat drin, fragt das Makro nach, damit nichts doppelt abgerechnet wird.</p>
+      </div>
+      <div class="feature new">
+        <span class="tag new">Abrechnung</span>
+        <h3>Klarere Mehrarbeitsübersicht</h3>
+        <p>Die PDF zeigt zu zählende und nicht zu zählende Vertretungen, die erfassten Vertretungen, die Korrektur mit Hinweis und die abrechenbaren Vertretungen inklusive Korrektur. „Zur Kenntnis genommen“ und die Unterschriftsfelder entfallen.</p>
+      </div>
+      <div class="feature new">
+        <span class="tag new">Formular</span>
+        <h3>Nur sinnvolle LBV-Formulare</h3>
+        <p>Das LBV-Formular erhält die korrigierte Stundenzahl. Lehrkräfte mit weniger als einer abrechenbaren Vertretung bekommen kein Formular mehr; früher konnte dort „000“ oder ein negativer Wert stehen. Sie werden am Ende aufgelistet.</p>
+      </div>
+    </div>
+    <div class="callout"><b>Aktualisieren:</b> Nur <code>vba/Modul1.bas</code> neu importieren, die Hilfsprogramme (EXE-Dateien) bleiben gleich. In einer älteren Arbeitsmappe in der Übersicht die Spalten „Korrektur“ und „Korrekturhinweis“ anlegen. Die bisherige Spalte „Vertretungen“ darf „zu zählende Vertretungen“ heißen, beide Namen werden erkannt. Die <a href="beispiel/Vertretungsabrechnung_Beispiel.xlsm" download>Beispieldatei</a> enthält bereits alles.</div>
+  </div>
+</section>
 
 <!-- ── Funktionen ── -->
 <section id="funktionen">
